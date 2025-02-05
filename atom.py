@@ -10,7 +10,9 @@ import pandas as pd
 from io import BytesIO
 from openai import OpenAI
 import numpy as np
+import re
 from docx import Document
+from sklearn.metrics.pairwise import cosine_similarity
 
 # Configurar la aplicación Streamlit
 st.title("Archivador Inteligente de Documentos Antiguos")
@@ -29,6 +31,10 @@ def extract_text_from_docx(docx_path):
 
 # Cargar contenido del documento ISDF para usar en embeddings
 ISDF_FULL_TEXT = extract_text_from_docx(ISDF_DOC_PATH)
+
+def clean_text(text):
+    """Normaliza el texto eliminando caracteres especiales y pasando a minúsculas."""
+    return re.sub(r'[^a-zA-Z0-9 ]', '', text.lower().strip())
 
 def generate_metadata(description, field):
     """Utiliza OpenAI para generar metadatos específicos según el campo del formato ISAD 2.8."""
@@ -61,32 +67,36 @@ def get_embedding(text):
 
 def find_best_match(column_name, column_values, atom_columns):
     """Encuentra la mejor coincidencia usando embeddings de OpenAI considerando los valores de la columna y la norma ISDF."""
-    combined_text = column_name + " " + " ".join(map(str, column_values[:5])) + " " + ISDF_FULL_TEXT[:3000]
+    cleaned_column_name = clean_text(column_name)
+    combined_text = cleaned_column_name + " " + " ".join(map(str, column_values[:5])) + " " + ISDF_FULL_TEXT[:3000]
     column_embedding = get_embedding(combined_text)
     
     atom_embeddings = {col: get_embedding(col) for col in atom_columns}  # Precalcular embeddings
     
     similarity_scores = {}
     for atom_field, atom_embedding in atom_embeddings.items():
-        similarity = np.dot(column_embedding, atom_embedding) / (np.linalg.norm(column_embedding) * np.linalg.norm(atom_embedding))
+        similarity = cosine_similarity([column_embedding], [atom_embedding])[0][0]
         similarity_scores[atom_field] = similarity
     
     # Ordenar y seleccionar las 5 mejores similitudes
     top_matches = sorted(similarity_scores.items(), key=lambda x: x[1], reverse=True)[:5]
     st.write(f"Top 5 similitudes para {column_name}:", top_matches)
     
-    # Penalizar términos genéricos y priorizar categorías semánticamente relevantes
-    penalty_terms = {"archivistNote": -0.1, "languageOfDescription": -0.05}
-    prioritized_terms = ["scopeAndContent", "archivalHistory", "custodialHistory", "levelOfDescription", "scriptOfDescription"]
+    # Lista de términos de referencia más relevantes para ciertos campos
+    preferred_terms = {
+        "Descripción": ["scriptOfDescription","scopeAndContent", "archivalHistory", "custodialHistory"],
+        "Idioma": ["languageOfMaterial"],
+        "Fecha": ["date", "creationDate", "validDate"],
+        "Autor": ["creator", "author", "responsibleEntity"]
+    }
     
-    adjusted_matches = [(match[0], match[1] + penalty_terms.get(match[0], 0)) for match in top_matches]
-    adjusted_matches = sorted(adjusted_matches, key=lambda x: x[1], reverse=True)
+    # Seleccionar mejor opción según preferencia semántica
+    for term in preferred_terms.get(column_name, []):
+        for match in top_matches:
+            if match[0] == term:
+                return match[0]
     
-    for match in adjusted_matches:
-        if match[0] in prioritized_terms:
-            return match[0]
-    
-    return adjusted_matches[0][0] if adjusted_matches[0][1] > 0.75 else None  # Se ajusta el umbral a 0.75
+    return top_matches[0][0] if top_matches[0][1] > 0.75 else None  # Se ajusta el umbral a 0.75
 
 # Cargar archivo Excel
 uploaded_file = st.file_uploader("Sube un archivo Excel con los documentos", type=["xlsx"])
