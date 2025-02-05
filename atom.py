@@ -10,7 +10,6 @@ import pandas as pd
 from io import BytesIO
 from openai import OpenAI
 import numpy as np
-import re
 from docx import Document
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -27,42 +26,41 @@ ISDF_DOC_PATH = "CBPS_2007_Guidelines_ISDF_First-edition_SP.docx"
 def extract_text_from_docx(docx_path):
     doc = Document(docx_path)
     text = "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
-    return text[:1000]  # Reducir el tamaño del texto para optimizar el rendimiento
+    return text
 
 # Cargar contenido del documento ISDF para usar en embeddings
 ISDF_FULL_TEXT = extract_text_from_docx(ISDF_DOC_PATH)
 
-def clean_text(text):
-    """Normaliza el texto eliminando caracteres especiales y pasando a minúsculas."""
-    return re.sub(r'[^a-zA-Z0-9 ]', '', text.lower().strip())
-
-@st.cache_resource
-def get_embeddings_batch(texts):
-    """Obtiene los embeddings de OpenAI en batch para mejorar el rendimiento."""
+def get_embedding(text):
+    """Obtiene el embedding de OpenAI para un texto dado."""
     response = client.embeddings.create(
-        model="text-embedding-3-small",
-        input=texts
+        model="text-embedding-ada-002",
+        input=text
     )
-    return {text: np.array(item.embedding) for text, item in zip(texts, response.data)}
+    return np.array(response.data[0].embedding)
 
-@st.cache_resource
-def precalculate_atom_embeddings(atom_columns):
-    """Precalcula y almacena los embeddings de las columnas del formato ISAD 2.8."""
-    return get_embeddings_batch(atom_columns)
-
-def find_best_match(column_name, column_values, atom_embeddings):
+def find_best_match(column_name, column_values, atom_columns):
     """Encuentra la mejor coincidencia usando embeddings de OpenAI considerando los valores de la columna y la norma ISDF."""
-    cleaned_column_name = clean_text(column_name)
-    combined_text = cleaned_column_name + " " + " ".join(map(str, column_values[:2]))  # Reducimos el tamaño del texto analizado
-    column_embedding = get_embeddings_batch([combined_text])[combined_text]
+    combined_text = column_name + " " + " ".join(map(str, column_values[:5])) + " " + ISDF_FULL_TEXT[:2000]
+    column_embedding = get_embedding(combined_text)
     
-    similarity_scores = {col: cosine_similarity([column_embedding], [emb])[0][0] for col, emb in atom_embeddings.items()}
+    best_match = None
+    best_similarity = -1
+    atom_embeddings = {col: get_embedding(col) for col in atom_columns}  # Precalcular embeddings
     
-    # Ordenar y seleccionar las 5 mejores coincidencias
-    top_matches = sorted(similarity_scores.items(), key=lambda x: x[1], reverse=True)[:5]
-    st.write(f"Top 5 similitudes para {column_name}:", top_matches)
+    similarity_scores = {}
+    for atom_field, atom_embedding in atom_embeddings.items():
+        similarity = np.dot(column_embedding, atom_embedding) / (np.linalg.norm(column_embedding) * np.linalg.norm(atom_embedding))
+        similarity_scores[atom_field] = similarity
+        
+        if similarity > best_similarity:
+            best_similarity = similarity
+            best_match = atom_field
     
-    return top_matches[0][0] if top_matches[0][1] > 0.75 else None
+    # Mostrar las similitudes para depuración
+    st.write(f"Similitudes calculadas para {column_name}:", similarity_scores)
+    
+    return best_match if best_similarity > 0.75 else None  # Se mantiene el umbral alto para precisión
 
 # Cargar archivo Excel
 uploaded_file = st.file_uploader("Sube un archivo Excel con los documentos", type=["xlsx"])
@@ -77,13 +75,10 @@ if uploaded_file:
     atom_template = pd.read_csv("Example_information_objects_isad-2.8.csv")
     output_df = pd.DataFrame(columns=atom_template.columns)
     
-    # Precalcular embeddings para todas las columnas de ISAD 2.8 (una sola vez)
-    atom_embeddings = precalculate_atom_embeddings(tuple(atom_template.columns))
-    
     # Intentar mapear automáticamente las columnas detectadas en el Excel cargado
     column_mapping = {}
     for column in df.columns:
-        best_match = find_best_match(column, df[column].dropna().astype(str).tolist(), atom_embeddings)
+        best_match = find_best_match(column, df[column].dropna().astype(str).tolist(), atom_template.columns)
         if best_match:
             output_df[best_match] = df[column].fillna("N/A")
             column_mapping[column] = best_match
