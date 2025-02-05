@@ -66,8 +66,8 @@ def find_best_match(column_name, column_values, atom_columns):
     
     # Lista de términos de referencia más relevantes para ciertos campos
     preferred_terms = {
-        "Descripción": ["scopeAndContent", "archivalHistory", "custodialHistory"],
-        "Idioma": ["languageOfMaterial", "scriptOfDescription"],
+        "Descripción": ["scriptOfDescription","scopeAndContent", "archivalHistory", "custodialHistory"],
+        "Idioma": ["languageOfMaterial"],
         "Fecha": ["date", "creationDate", "validDate"],
         "Autor": ["creator", "author", "responsibleEntity"]
     }
