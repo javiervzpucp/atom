@@ -18,21 +18,24 @@ st.title("Archivador Inteligente de Documentos Antiguos")
 openai_api_key = st.secrets["OPENAI_API_KEY"]
 client = OpenAI(api_key=openai_api_key)
 
+# Cargar información clave del PDF de la norma ISDF
+ISDF_GUIDELINES = "Esta norma establece directrices para la descripción de funciones en los sistemas de información archivística, complementando la ISAD(G) y la ISAAR(CPF). Incluye elementos clave como identificación, contexto, relaciones y control."
+
 def generate_metadata(description, field):
-    """Utiliza OpenAI para generar metadatos específicos según el campo del formato AtoM 2.8."""
+    """Utiliza OpenAI para generar metadatos específicos según el campo del formato ISAD 2.8."""
     if not description or pd.isna(description):
         return "N/A"
     
     prompt = (
-        f"Eres un archivista experto en catalogación de documentos históricos usando el formato AtoM 2.8. "
+        f"Eres un archivista experto en catalogación de documentos históricos usando el formato ISAD 2.8 y las directrices ISDF. "
         f"Genera un contenido preciso para el campo '{field}' con base en la siguiente información del documento: {description}. "
-        f"Sigue estrictamente los estándares de AtoM 2.8 para la redacción de metadatos."
+        f"Considera las normas ISDF: {ISDF_GUIDELINES}."
     )
     
     response = client.chat.completions.create(
         model="gpt-4-turbo",
         messages=[
-            {"role": "system", "content": "Eres un experto en archivística y catalogación según AtoM 2.8."},
+            {"role": "system", "content": "Eres un experto en archivística y catalogación según ISAD 2.8 y ISDF."},
             {"role": "user", "content": prompt}
         ],
         max_tokens=200
@@ -47,14 +50,16 @@ def get_embedding(text):
     )
     return np.array(response.data[0].embedding)
 
-def find_best_match(column_name, atom_columns):
-    """Encuentra la mejor coincidencia usando embeddings de OpenAI y ajusta la similitud para mayor precisión."""
-    column_embedding = get_embedding(column_name)
+def find_best_match(column_name, column_values, atom_columns):
+    """Encuentra la mejor coincidencia usando embeddings de OpenAI considerando los valores de la columna y la norma ISDF."""
+    combined_text = column_name + " " + " ".join(map(str, column_values[:5])) + " " + ISDF_GUIDELINES
+    column_embedding = get_embedding(combined_text)
+    
     best_match = None
     best_similarity = -1
+    atom_embeddings = {col: get_embedding(col) for col in atom_columns}  # Precalcular embeddings
     
-    for atom_field in atom_columns:
-        atom_embedding = get_embedding(atom_field)
+    for atom_field, atom_embedding in atom_embeddings.items():
         similarity = np.dot(column_embedding, atom_embedding) / (np.linalg.norm(column_embedding) * np.linalg.norm(atom_embedding))
         
         if similarity > best_similarity:
@@ -72,23 +77,23 @@ if uploaded_file:
     st.write("Datos cargados del archivo:")
     st.dataframe(df)
     
-    # Cargar el formato de AtoM 2.8 desde el CSV de referencia
-    atom_template = pd.read_csv("Example_authority_records-2.8.csv")
+    # Cargar el formato ISAD 2.8 desde el CSV actualizado
+    atom_template = pd.read_csv("Example_information_objects_isad-2.8.csv")
     output_df = pd.DataFrame(columns=atom_template.columns)
     
     # Intentar mapear automáticamente las columnas detectadas en el Excel cargado
     column_mapping = {}
     for column in df.columns:
-        best_match = find_best_match(column, atom_template.columns)
+        best_match = find_best_match(column, df[column].dropna().astype(str).tolist(), atom_template.columns)
         if best_match:
             output_df[best_match] = df[column].fillna("N/A")
             column_mapping[column] = best_match
     
-    st.write("Mapa de columnas detectadas y ajustadas con mayor precisión usando embeddings:")
+    st.write("Mapa de columnas detectadas y ajustadas con mayor precisión usando embeddings y datos de muestra con ISDF:")
     st.write(column_mapping)
     
-    # Generar metadatos adicionales según los campos del formato AtoM 2.8
-    st.write("Generando metadatos específicos del formato AtoM 2.8...")
+    # Generar metadatos adicionales según los campos del formato ISAD 2.8
+    st.write("Generando metadatos específicos del formato ISAD 2.8...")
     for field in output_df.columns:
         if output_df[field].isnull().all():
             continue
@@ -101,8 +106,8 @@ if uploaded_file:
     output.seek(0)
     
     st.download_button(
-        label="Descargar archivo en formato AtoM 2.8",
+        label="Descargar archivo en formato ISAD 2.8",
         data=output,
-        file_name="archivados_atom_2.8.xlsx",
+        file_name="archivados_isad_2.8.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
