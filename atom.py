@@ -10,6 +10,7 @@ import pandas as pd
 from io import BytesIO
 from openai import OpenAI
 import numpy as np
+from docx import Document
 
 # Configurar la aplicación Streamlit
 st.title("Archivador Inteligente de Documentos Antiguos")
@@ -18,8 +19,17 @@ st.title("Archivador Inteligente de Documentos Antiguos")
 openai_api_key = st.secrets["OPENAI_API_KEY"]
 client = OpenAI(api_key=openai_api_key)
 
-# Cargar información clave del PDF de la norma ISDF
-ISDF_GUIDELINES = "Esta norma establece directrices para la descripción de funciones en los sistemas de información archivística, complementando la ISAD(G) y la ISAAR(CPF). Incluye elementos clave como identificación, contexto, relaciones y control."
+# Extraer texto del documento ISDF
+ISDF_DOC_PATH = "CBPS_2007_Guidelines_ISDF_First-edition_SP.docx"
+
+def extract_text_from_docx(docx_path):
+    doc = Document(docx_path)
+    text = "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
+    return text
+
+# Cargar contenido del documento ISDF para usar en embeddings
+ISDF_FULL_TEXT = extract_text_from_docx(ISDF_DOC_PATH)
+
 
 def generate_metadata(description, field):
     """Utiliza OpenAI para generar metadatos específicos según el campo del formato ISAD 2.8."""
@@ -29,8 +39,8 @@ def generate_metadata(description, field):
     prompt = (
         f"Eres un archivista experto en catalogación de documentos históricos usando el formato ISAD 2.8 y las directrices ISDF. "
         f"Genera un contenido preciso para el campo '{field}' con base en la siguiente información del documento: {description}. "
-        f"Considera las normas ISDF: {ISDF_GUIDELINES}."
-    )
+        f"Utiliza la siguiente información clave de la norma ISDF para mejorar la precisión: {ISDF_FULL_TEXT[:2000]} ..."
+    )  # Solo usamos los primeros 2000 caracteres para evitar respuestas muy largas
     
     response = client.chat.completions.create(
         model="gpt-4-turbo",
@@ -52,7 +62,7 @@ def get_embedding(text):
 
 def find_best_match(column_name, column_values, atom_columns):
     """Encuentra la mejor coincidencia usando embeddings de OpenAI considerando los valores de la columna y la norma ISDF."""
-    combined_text = column_name + " " + " ".join(map(str, column_values[:5])) + " " + ISDF_GUIDELINES
+    combined_text = column_name + " " + " ".join(map(str, column_values[:5])) + " " + ISDF_FULL_TEXT[:2000]
     column_embedding = get_embedding(combined_text)
     
     best_match = None
@@ -66,7 +76,7 @@ def find_best_match(column_name, column_values, atom_columns):
             best_similarity = similarity
             best_match = atom_field
     
-    return best_match if best_similarity > 0.85 else None  # Se aumenta el umbral para mayor precisión
+    return best_match if best_similarity > 0.85 else None  # Se mantiene el umbral alto para precisión
 
 # Cargar archivo Excel
 uploaded_file = st.file_uploader("Sube un archivo Excel con los documentos", type=["xlsx"])
