@@ -75,7 +75,9 @@ def find_best_match(column_name, column_values, atom_columns):
     top_matches = sorted(similarity_scores.items(), key=lambda x: x[1], reverse=True)[:5]
     st.write(f"Top 5 similitudes para {column_name}:", top_matches)
     
-    return top_matches[0][0] if top_matches and top_matches[0][1] > 0.75 else None  # Se ajusta el umbral a 0.75
+    # Mejor selección de coincidencia evitando sesgos hacia archivistNote
+    best_match = next((match[0] for match in top_matches if match[0] != "archivistNote"), top_matches[0][0])
+    return best_match if top_matches[0][1] > 0.75 else None  # Se ajusta el umbral a 0.75
 
 # Cargar archivo Excel
 uploaded_file = st.file_uploader("Sube un archivo Excel con los documentos", type=["xlsx"])
