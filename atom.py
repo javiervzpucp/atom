@@ -30,7 +30,6 @@ def extract_text_from_docx(docx_path):
 # Cargar contenido del documento ISDF para usar en embeddings
 ISDF_FULL_TEXT = extract_text_from_docx(ISDF_DOC_PATH)
 
-
 def generate_metadata(description, field):
     """Utiliza OpenAI para generar metadatos específicos según el campo del formato ISAD 2.8."""
     if not description or pd.isna(description):
@@ -69,14 +68,19 @@ def find_best_match(column_name, column_values, atom_columns):
     best_similarity = -1
     atom_embeddings = {col: get_embedding(col) for col in atom_columns}  # Precalcular embeddings
     
+    similarity_scores = {}
     for atom_field, atom_embedding in atom_embeddings.items():
         similarity = np.dot(column_embedding, atom_embedding) / (np.linalg.norm(column_embedding) * np.linalg.norm(atom_embedding))
+        similarity_scores[atom_field] = similarity
         
         if similarity > best_similarity:
             best_similarity = similarity
             best_match = atom_field
     
-    return best_match if best_similarity > 0.85 else None  # Se mantiene el umbral alto para precisión
+    # Mostrar las similitudes para depuración
+    st.write(f"Similitudes calculadas para {column_name}:", similarity_scores)
+    
+    return best_match if best_similarity > 0.75 else None  # Se ajusta el umbral a 0.75 para mejorar coincidencias
 
 # Cargar archivo Excel
 uploaded_file = st.file_uploader("Sube un archivo Excel con los documentos", type=["xlsx"])
