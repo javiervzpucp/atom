@@ -64,23 +64,18 @@ def find_best_match(column_name, column_values, atom_columns):
     combined_text = column_name + " " + " ".join(map(str, column_values[:5])) + " " + ISDF_FULL_TEXT[:2000]
     column_embedding = get_embedding(combined_text)
     
-    best_match = None
-    best_similarity = -1
     atom_embeddings = {col: get_embedding(col) for col in atom_columns}  # Precalcular embeddings
     
     similarity_scores = {}
     for atom_field, atom_embedding in atom_embeddings.items():
         similarity = np.dot(column_embedding, atom_embedding) / (np.linalg.norm(column_embedding) * np.linalg.norm(atom_embedding))
         similarity_scores[atom_field] = similarity
-        
-        if similarity > best_similarity:
-            best_similarity = similarity
-            best_match = atom_field
     
-    # Mostrar las similitudes para depuración
-    st.write(f"Similitudes calculadas para {column_name}:", similarity_scores)
+    # Ordenar y seleccionar las 5 mejores similitudes
+    top_matches = sorted(similarity_scores.items(), key=lambda x: x[1], reverse=True)[:5]
+    st.write(f"Top 5 similitudes para {column_name}:", top_matches)
     
-    return best_match if best_similarity > 0.75 else None  # Se ajusta el umbral a 0.75 para mejorar coincidencias
+    return top_matches[0][0] if top_matches and top_matches[0][1] > 0.75 else None  # Se ajusta el umbral a 0.75
 
 # Cargar archivo Excel
 uploaded_file = st.file_uploader("Sube un archivo Excel con los documentos", type=["xlsx"])
