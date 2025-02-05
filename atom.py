@@ -13,7 +13,6 @@ import numpy as np
 import re
 from docx import Document
 from sklearn.metrics.pairwise import cosine_similarity
-from functools import lru_cache
 
 # Configurar la aplicación Streamlit
 st.title("Archivador Inteligente de Documentos Antiguos")
@@ -37,25 +36,27 @@ def clean_text(text):
     """Normaliza el texto eliminando caracteres especiales y pasando a minúsculas."""
     return re.sub(r'[^a-zA-Z0-9 ]', '', text.lower().strip())
 
-@lru_cache(maxsize=512)
-def get_embedding(text):
-    """Obtiene el embedding de OpenAI para un texto dado, con caché para mejorar el rendimiento."""
+@st.cache_data
+def get_embeddings_batch(texts):
+    """Obtiene los embeddings de OpenAI en batch para mejorar el rendimiento."""
     response = client.embeddings.create(
         model="text-embedding-3-small",
-        input=text
+        input=texts
     )
-    return np.array(response.data[0].embedding)
+    return [np.array(item.embedding) for item in response.data]
 
-def find_best_match(column_name, column_values, atom_columns, atom_embeddings):
+@st.cache_data
+def precalculate_atom_embeddings(atom_columns):
+    """Precalcula y almacena los embeddings de las columnas del formato ISAD 2.8."""
+    return dict(zip(atom_columns, get_embeddings_batch(atom_columns)))
+
+def find_best_match(column_name, column_values, atom_embeddings):
     """Encuentra la mejor coincidencia usando embeddings de OpenAI considerando los valores de la columna y la norma ISDF."""
     cleaned_column_name = clean_text(column_name)
     combined_text = cleaned_column_name + " " + " ".join(map(str, column_values[:3]))  # Reducimos el tamaño del texto analizado
-    column_embedding = get_embedding(combined_text)
+    column_embedding = get_embeddings_batch([combined_text])[0]
     
-    similarity_scores = {}
-    for atom_field, atom_embedding in atom_embeddings.items():
-        similarity = cosine_similarity([column_embedding], [atom_embedding])[0][0]
-        similarity_scores[atom_field] = similarity
+    similarity_scores = {col: cosine_similarity([column_embedding], [emb])[0][0] for col, emb in atom_embeddings.items()}
     
     # Ordenar y seleccionar las 5 mejores coincidencias
     top_matches = sorted(similarity_scores.items(), key=lambda x: x[1], reverse=True)[:5]
@@ -77,12 +78,12 @@ if uploaded_file:
     output_df = pd.DataFrame(columns=atom_template.columns)
     
     # Precalcular embeddings para todas las columnas de ISAD 2.8
-    atom_embeddings = {col: get_embedding(col) for col in atom_template.columns}
+    atom_embeddings = precalculate_atom_embeddings(atom_template.columns)
     
     # Intentar mapear automáticamente las columnas detectadas en el Excel cargado
     column_mapping = {}
     for column in df.columns:
-        best_match = find_best_match(column, df[column].dropna().astype(str).tolist(), atom_template.columns, atom_embeddings)
+        best_match = find_best_match(column, df[column].dropna().astype(str).tolist(), atom_embeddings)
         if best_match:
             output_df[best_match] = df[column].fillna("N/A")
             column_mapping[column] = best_match
