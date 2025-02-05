@@ -38,16 +38,16 @@ def generate_metadata(description, field):
     prompt = (
         f"Eres un archivista experto en catalogación de documentos históricos usando el formato ISAD 2.8 y las directrices ISDF. "
         f"Genera un contenido preciso para el campo '{field}' con base en la siguiente información del documento: {description}. "
-        f"Utiliza la siguiente información clave de la norma ISDF para mejorar la precisión: {ISDF_FULL_TEXT[:2000]} ..."
-    )  # Solo usamos los primeros 2000 caracteres para evitar respuestas muy largas
+        f"Utiliza la siguiente información clave de la norma ISDF para mejorar la precisión: {ISDF_FULL_TEXT[:3000]} ..."
+    )  # Ampliamos a 3000 caracteres para mayor contexto
     
     response = client.chat.completions.create(
-        model="gpt-4-turbo",
+        model="gpt-4-1106-preview",  # Se mejora el modelo para mayor precisión
         messages=[
             {"role": "system", "content": "Eres un experto en archivística y catalogación según ISAD 2.8 y ISDF."},
             {"role": "user", "content": prompt}
         ],
-        max_tokens=200
+        max_tokens=250
     )
     return response.choices[0].message.content.strip()
 
@@ -61,7 +61,7 @@ def get_embedding(text):
 
 def find_best_match(column_name, column_values, atom_columns):
     """Encuentra la mejor coincidencia usando embeddings de OpenAI considerando los valores de la columna y la norma ISDF."""
-    combined_text = column_name + " " + " ".join(map(str, column_values[:5])) + " " + ISDF_FULL_TEXT[:2000]
+    combined_text = column_name + " " + " ".join(map(str, column_values[:5])) + " " + ISDF_FULL_TEXT[:3000]
     column_embedding = get_embedding(combined_text)
     
     atom_embeddings = {col: get_embedding(col) for col in atom_columns}  # Precalcular embeddings
@@ -75,11 +75,13 @@ def find_best_match(column_name, column_values, atom_columns):
     top_matches = sorted(similarity_scores.items(), key=lambda x: x[1], reverse=True)[:5]
     st.write(f"Top 5 similitudes para {column_name}:", top_matches)
     
-    # Penalizar términos genéricos que tienden a ganar de manera incorrecta
-    penalized_matches = [match for match in top_matches if match[0] not in ["archivistNote", "languageOfDescription"]]
-    best_match = penalized_matches[0][0] if penalized_matches else top_matches[0][0]
+    # Priorizar términos más relevantes para la catalogación
+    preferred_terms = ["archivalHistory", "levelOfDescription", "scriptOfDescription", "scopeAndContent", "custodialHistory"]
+    for match in top_matches:
+        if match[0] in preferred_terms:
+            return match[0]
     
-    return best_match if top_matches[0][1] > 0.75 else None  # Se ajusta el umbral a 0.75
+    return top_matches[0][0] if top_matches[0][1] > 0.75 else None  # Se ajusta el umbral a 0.75
 
 # Cargar archivo Excel
 uploaded_file = st.file_uploader("Sube un archivo Excel con los documentos", type=["xlsx"])
