@@ -27,7 +27,7 @@ ISDF_DOC_PATH = "CBPS_2007_Guidelines_ISDF_First-edition_SP.docx"
 def extract_text_from_docx(docx_path):
     doc = Document(docx_path)
     text = "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
-    return text[:2000]  # Limitar el tamaño del texto extraído
+    return text[:1000]  # Reducir el tamaño del texto para optimizar el rendimiento
 
 # Cargar contenido del documento ISDF para usar en embeddings
 ISDF_FULL_TEXT = extract_text_from_docx(ISDF_DOC_PATH)
@@ -36,25 +36,25 @@ def clean_text(text):
     """Normaliza el texto eliminando caracteres especiales y pasando a minúsculas."""
     return re.sub(r'[^a-zA-Z0-9 ]', '', text.lower().strip())
 
-@st.cache_data
+@st.cache_resource
 def get_embeddings_batch(texts):
     """Obtiene los embeddings de OpenAI en batch para mejorar el rendimiento."""
     response = client.embeddings.create(
         model="text-embedding-3-small",
         input=texts
     )
-    return [np.array(item.embedding) for item in response.data]
+    return {text: np.array(item.embedding) for text, item in zip(texts, response.data)}
 
-@st.cache_data
+@st.cache_resource
 def precalculate_atom_embeddings(atom_columns):
     """Precalcula y almacena los embeddings de las columnas del formato ISAD 2.8."""
-    return dict(zip(atom_columns, get_embeddings_batch(atom_columns)))
+    return get_embeddings_batch(atom_columns)
 
 def find_best_match(column_name, column_values, atom_embeddings):
     """Encuentra la mejor coincidencia usando embeddings de OpenAI considerando los valores de la columna y la norma ISDF."""
     cleaned_column_name = clean_text(column_name)
-    combined_text = cleaned_column_name + " " + " ".join(map(str, column_values[:3]))  # Reducimos el tamaño del texto analizado
-    column_embedding = get_embeddings_batch([combined_text])[0]
+    combined_text = cleaned_column_name + " " + " ".join(map(str, column_values[:2]))  # Reducimos el tamaño del texto analizado
+    column_embedding = get_embeddings_batch([combined_text])[combined_text]
     
     similarity_scores = {col: cosine_similarity([column_embedding], [emb])[0][0] for col, emb in atom_embeddings.items()}
     
@@ -77,8 +77,8 @@ if uploaded_file:
     atom_template = pd.read_csv("Example_information_objects_isad-2.8.csv")
     output_df = pd.DataFrame(columns=atom_template.columns)
     
-    # Precalcular embeddings para todas las columnas de ISAD 2.8
-    atom_embeddings = precalculate_atom_embeddings(atom_template.columns)
+    # Precalcular embeddings para todas las columnas de ISAD 2.8 (una sola vez)
+    atom_embeddings = precalculate_atom_embeddings(tuple(atom_template.columns))
     
     # Intentar mapear automáticamente las columnas detectadas en el Excel cargado
     column_mapping = {}
