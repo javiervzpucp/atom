@@ -42,7 +42,7 @@ def generate_metadata(description, field):
     )  # Ampliamos a 3000 caracteres para mayor contexto
     
     response = client.chat.completions.create(
-        model="gpt-4-1106-preview",  # Se mejora el modelo para mayor precisión
+        model="gpt-4-turbo",  # Se mantiene gpt-4 para precisión
         messages=[
             {"role": "system", "content": "Eres un experto en archivística y catalogación según ISAD 2.8 y ISDF."},
             {"role": "user", "content": prompt}
@@ -54,7 +54,7 @@ def generate_metadata(description, field):
 def get_embedding(text):
     """Obtiene el embedding de OpenAI para un texto dado."""
     response = client.embeddings.create(
-        model="text-embedding-ada-002",
+        model="text-embedding-3-small",  # Se mejora la precisión del modelo de embeddings
         input=text
     )
     return np.array(response.data[0].embedding)
@@ -75,13 +75,18 @@ def find_best_match(column_name, column_values, atom_columns):
     top_matches = sorted(similarity_scores.items(), key=lambda x: x[1], reverse=True)[:5]
     st.write(f"Top 5 similitudes para {column_name}:", top_matches)
     
-    # Priorizar términos más relevantes para la catalogación
-    preferred_terms = ["archivalHistory", "levelOfDescription", "scriptOfDescription", "scopeAndContent", "custodialHistory"]
-    for match in top_matches:
-        if match[0] in preferred_terms:
+    # Penalizar términos genéricos y priorizar categorías semánticamente relevantes
+    penalty_terms = {"archivistNote": -0.1, "languageOfDescription": -0.05}
+    prioritized_terms = ["scopeAndContent", "archivalHistory", "custodialHistory", "levelOfDescription", "scriptOfDescription"]
+    
+    adjusted_matches = [(match[0], match[1] + penalty_terms.get(match[0], 0)) for match in top_matches]
+    adjusted_matches = sorted(adjusted_matches, key=lambda x: x[1], reverse=True)
+    
+    for match in adjusted_matches:
+        if match[0] in prioritized_terms:
             return match[0]
     
-    return top_matches[0][0] if top_matches[0][1] > 0.75 else None  # Se ajusta el umbral a 0.75
+    return adjusted_matches[0][0] if adjusted_matches[0][1] > 0.75 else None  # Se ajusta el umbral a 0.75
 
 # Cargar archivo Excel
 uploaded_file = st.file_uploader("Sube un archivo Excel con los documentos", type=["xlsx"])
