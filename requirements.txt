@@ -56,3 +56,4 @@ tzdata==2025.1
 urllib3==2.3.0
 watchdog==6.0.0
 wheel==0.45.1
+XlsxWriter==3.2.2
