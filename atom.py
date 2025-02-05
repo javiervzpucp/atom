@@ -48,7 +48,7 @@ def get_embedding(text):
     return np.array(response.data[0].embedding)
 
 def find_best_match(column_name, atom_columns):
-    """Encuentra la mejor coincidencia usando embeddings de OpenAI."""
+    """Encuentra la mejor coincidencia usando embeddings de OpenAI y ajusta la similitud para mayor precisión."""
     column_embedding = get_embedding(column_name)
     best_match = None
     best_similarity = -1
@@ -61,7 +61,7 @@ def find_best_match(column_name, atom_columns):
             best_similarity = similarity
             best_match = atom_field
     
-    return best_match if best_similarity > 0.7 else None  # Umbral de similitud
+    return best_match if best_similarity > 0.85 else None  # Se aumenta el umbral para mayor precisión
 
 # Cargar archivo Excel
 uploaded_file = st.file_uploader("Sube un archivo Excel con los documentos", type=["xlsx"])
@@ -84,7 +84,7 @@ if uploaded_file:
             output_df[best_match] = df[column].fillna("N/A")
             column_mapping[column] = best_match
     
-    st.write("Mapa de columnas detectadas y asociadas inteligentemente usando embeddings:")
+    st.write("Mapa de columnas detectadas y ajustadas con mayor precisión usando embeddings:")
     st.write(column_mapping)
     
     # Generar metadatos adicionales según los campos del formato AtoM 2.8
