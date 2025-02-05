@@ -19,6 +19,9 @@ client = OpenAI(api_key=openai_api_key)
 
 def generate_metadata(description, field):
     """Utiliza OpenAI para generar metadatos específicos según el campo del formato AtoM 2.8."""
+    if not description or pd.isna(description):
+        return "N/A"
+    
     prompt = (
         f"Eres un archivista experto en catalogación de documentos históricos usando el formato AtoM 2.8. "
         f"Genera contenido para el campo '{field}' con base en la siguiente descripción del documento: {description}"
@@ -48,18 +51,23 @@ if uploaded_file:
     output_df = pd.DataFrame(columns=atom_template.columns)
     
     # Intentar mapear automáticamente las columnas detectadas en el Excel cargado
+    column_mapping = {}
     for column in df.columns:
         for atom_field in atom_template.columns:
             if column.lower().replace(" ", "_") in atom_field.lower().replace(" ", "_"):
-                output_df[atom_field] = df[column]
+                output_df[atom_field] = df[column].fillna("N/A")
+                column_mapping[column] = atom_field
                 break
+    
+    st.write("Mapa de columnas detectadas:")
+    st.write(column_mapping)
     
     # Generar metadatos adicionales según los campos del formato AtoM 2.8
     st.write("Generando metadatos específicos del formato AtoM 2.8...")
     for field in output_df.columns:
         if output_df[field].isnull().all():
             continue
-        output_df[field] = output_df[field].apply(lambda x: generate_metadata(str(x), field) if pd.notna(x) else "")
+        output_df[field] = output_df[field].apply(lambda x: generate_metadata(str(x), field) if x != "N/A" else "N/A")
     
     # Convertir a Excel para descarga
     output = BytesIO()
