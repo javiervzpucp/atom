@@ -9,6 +9,7 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 from openai import OpenAI
+import numpy as np
 
 # Configurar la aplicación Streamlit
 st.title("Archivador Inteligente de Documentos Antiguos")
@@ -24,7 +25,8 @@ def generate_metadata(description, field):
     
     prompt = (
         f"Eres un archivista experto en catalogación de documentos históricos usando el formato AtoM 2.8. "
-        f"Genera contenido para el campo '{field}' con base en la siguiente descripción del documento: {description}"
+        f"Genera un contenido preciso para el campo '{field}' con base en la siguiente información del documento: {description}. "
+        f"Sigue estrictamente los estándares de AtoM 2.8 para la redacción de metadatos."
     )
     
     response = client.chat.completions.create(
@@ -36,6 +38,30 @@ def generate_metadata(description, field):
         max_tokens=200
     )
     return response.choices[0].message.content.strip()
+
+def get_embedding(text):
+    """Obtiene el embedding de OpenAI para un texto dado."""
+    response = client.embeddings.create(
+        model="text-embedding-ada-002",
+        input=text
+    )
+    return np.array(response.data[0].embedding)
+
+def find_best_match(column_name, atom_columns):
+    """Encuentra la mejor coincidencia usando embeddings de OpenAI."""
+    column_embedding = get_embedding(column_name)
+    best_match = None
+    best_similarity = -1
+    
+    for atom_field in atom_columns:
+        atom_embedding = get_embedding(atom_field)
+        similarity = np.dot(column_embedding, atom_embedding) / (np.linalg.norm(column_embedding) * np.linalg.norm(atom_embedding))
+        
+        if similarity > best_similarity:
+            best_similarity = similarity
+            best_match = atom_field
+    
+    return best_match if best_similarity > 0.7 else None  # Umbral de similitud
 
 # Cargar archivo Excel
 uploaded_file = st.file_uploader("Sube un archivo Excel con los documentos", type=["xlsx"])
@@ -53,13 +79,12 @@ if uploaded_file:
     # Intentar mapear automáticamente las columnas detectadas en el Excel cargado
     column_mapping = {}
     for column in df.columns:
-        for atom_field in atom_template.columns:
-            if column.lower().replace(" ", "_") in atom_field.lower().replace(" ", "_"):
-                output_df[atom_field] = df[column].fillna("N/A")
-                column_mapping[column] = atom_field
-                break
+        best_match = find_best_match(column, atom_template.columns)
+        if best_match:
+            output_df[best_match] = df[column].fillna("N/A")
+            column_mapping[column] = best_match
     
-    st.write("Mapa de columnas detectadas:")
+    st.write("Mapa de columnas detectadas y asociadas inteligentemente usando embeddings:")
     st.write(column_mapping)
     
     # Generar metadatos adicionales según los campos del formato AtoM 2.8
