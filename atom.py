@@ -12,6 +12,7 @@ from openai import OpenAI
 import numpy as np
 import re
 from docx import Document
+from sklearn.metrics.pairwise import cosine_similarity
 
 # Configurar la aplicación Streamlit
 st.title("Archivador Inteligente de Documentos Antiguos")
@@ -31,6 +32,10 @@ def extract_text_from_docx(docx_path):
 # Cargar contenido del documento ISDF para usar en embeddings
 ISDF_FULL_TEXT = extract_text_from_docx(ISDF_DOC_PATH)
 
+def clean_text(text):
+    """Normaliza el texto eliminando caracteres especiales y pasando a minúsculas."""
+    return re.sub(r'[^a-zA-Z0-9 ]', '', text.lower().strip())
+
 def get_embedding(text):
     """Obtiene el embedding de OpenAI para un texto dado."""
     response = client.embeddings.create(
@@ -41,26 +46,39 @@ def get_embedding(text):
 
 def find_best_match(column_name, column_values, atom_columns):
     """Encuentra la mejor coincidencia usando embeddings de OpenAI considerando los valores de la columna y la norma ISDF."""
-    combined_text = column_name + " " + " ".join(map(str, column_values[:5])) + " " + ISDF_FULL_TEXT[:2000]
+    cleaned_column_name = clean_text(column_name)
+    combined_text = cleaned_column_name + " " + " ".join(map(str, column_values[:5])) + " " + ISDF_FULL_TEXT[:2000]
     column_embedding = get_embedding(combined_text)
     
-    best_match = None
-    best_similarity = -1
     atom_embeddings = {col: get_embedding(col) for col in atom_columns}  # Precalcular embeddings
     
     similarity_scores = {}
     for atom_field, atom_embedding in atom_embeddings.items():
-        similarity = np.dot(column_embedding, atom_embedding) / (np.linalg.norm(column_embedding) * np.linalg.norm(atom_embedding))
+        similarity = cosine_similarity([column_embedding], [atom_embedding])[0][0]
+        # Penalizar términos genéricos
+        if atom_field in ["archivistNote", "languageOfDescription"]:
+            similarity -= 0.10
         similarity_scores[atom_field] = similarity
-        
-        if similarity > best_similarity:
-            best_similarity = similarity
-            best_match = atom_field
     
-    # Mostrar las similitudes para depuración
-    st.write(f"Similitudes calculadas para {column_name}:", similarity_scores)
+    # Ordenar y seleccionar las 5 mejores similitudes
+    top_matches = sorted(similarity_scores.items(), key=lambda x: x[1], reverse=True)[:5]
+    st.write(f"Top 5 similitudes para {column_name}:", top_matches)
     
-    return best_match if best_similarity > 0.75 else None  # Se mantiene el umbral alto para precisión
+    # Lista de términos de referencia más relevantes para ciertos campos
+    preferred_terms = {
+        "Descripción": ["scopeAndContent", "archivalHistory", "custodialHistory"],
+        "Idioma": ["languageOfMaterial", "scriptOfDescription"],
+        "Fecha": ["date", "creationDate", "validDate"],
+        "Autor": ["creator", "author", "responsibleEntity"]
+    }
+    
+    # Seleccionar mejor opción según preferencia semántica
+    for term in preferred_terms.get(column_name, []):
+        for match in top_matches:
+            if match[0] == term:
+                return match[0]
+    
+    return top_matches[0][0] if top_matches[0][1] > 0.75 else None  # Se mantiene el umbral alto para precisión
 
 # Cargar archivo Excel
 uploaded_file = st.file_uploader("Sube un archivo Excel con los documentos", type=["xlsx"])
