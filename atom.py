@@ -43,6 +43,9 @@ TERM_EQUIVALENTS = {
     "Acceso": ["accessConditions", "rights", "restrictions"]
 }
 
+# Definir columnas que solo deben ser seleccionadas si son la mejor opción absoluta
+LOW_PRIORITY_COLUMNS = ["archivalHistory", "relatedUnitsOfDescription", "archivistNote"]
+
 def clean_text(text):
     """Normaliza el texto eliminando caracteres especiales y pasando a minúsculas."""
     return re.sub(r'[^a-zA-Z0-9 ]', '', text.lower().strip())
@@ -117,7 +120,12 @@ def find_best_match(column_name, column_values):
     top_matches = sorted(similarity_scores.items(), key=lambda x: x[1], reverse=True)[:5]
     st.write(f"Top 5 similitudes para {column_name}:", top_matches)
     
-    return top_matches[0][0] if top_matches[0][1] > 0.75 else None
+    # Evitar que columnas de baja prioridad se seleccionen si hay mejores opciones
+    for match in top_matches:
+        if match[0] not in LOW_PRIORITY_COLUMNS:
+            return match[0]
+    
+    return top_matches[0][0] if top_matches[0][1] > 0.80 else None
 
 # Cargar archivo Excel
 uploaded_file = st.file_uploader("Sube un archivo Excel con los documentos", type=["xlsx"])
