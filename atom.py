@@ -68,9 +68,9 @@ def clean_text(text):
     text = expand_text_with_ai(text)
     return re.sub(r'[^a-zA-Z0-9 ]', '', text.lower().strip())
 
-# Clasificación automática de tipo de datos basado en valores
-def classify_column_type(values):
-    """Determina el tipo de datos basado en los valores de la columna."""
+# Clasificación automática de tipo de datos basado en valores y nombres
+def classify_column_type(column_name, values):
+    """Determina el tipo de datos basado en los valores de la columna y su nombre."""
     date_patterns = [
         r'\d{4}',  # Años (1874, 1902, etc.)
         r'\d{4}-\d{2}-\d{2}',  # Formato YYYY-MM-DD
@@ -79,6 +79,9 @@ def classify_column_type(values):
         r's\.XVIII|s\.XVII|s\.XIX',  # Siglos (s.XVIII)
         r'\d{4}-[a-zA-Z]+\.\d{2}',  # Fechas con meses escritos (1909-May.-29)
     ]
+    
+    if "fecha" in column_name.lower() or "date" in column_name.lower():
+        return "date"
     
     if len(values) == 0:
         return "unknown"
@@ -116,7 +119,7 @@ def extract_column_context(df):
     for column in df.columns:
         expanded_column = clean_text(column)
         values_sample = df[column].dropna().astype(str).tolist()[:10]
-        column_type = classify_column_type(values_sample)
+        column_type = classify_column_type(expanded_column, values_sample)
         
         # Buscar mejor coincidencia según tipo de dato y grupo
         best_match = find_best_match(expanded_column, column_type)
