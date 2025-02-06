@@ -55,9 +55,9 @@ def find_best_match(column_name, column_values, atom_columns):
     similarity_scores = {}
     for atom_field, atom_embedding in atom_embeddings.items():
         similarity = cosine_similarity([column_embedding], [atom_embedding])[0][0]
-        # Penalizar términos genéricos
+        # Penalizar términos genéricos y sobreutilizados
         if atom_field in ["archivistNote", "languageOfDescription", "archivalHistory"]:
-            similarity -= 0.10
+            similarity -= 0.20
         similarity_scores[atom_field] = similarity
     
     # Ordenar y seleccionar las 5 mejores similitudes
@@ -66,7 +66,7 @@ def find_best_match(column_name, column_values, atom_columns):
     
     # Lista de términos de referencia más relevantes para ciertos campos
     preferred_terms = {
-        "Descripción": ["scriptOfDescription","scopeAndContent", "custodialHistory", "contentAndStructure"],
+        "Descripción": ["scopeAndContent", "custodialHistory", "contentAndStructure", "scriptOfDescription"],
         "Idioma": ["languageOfMaterial", "languageOfResource"],
         "Fecha": ["date", "creationDate", "validDate", "eventDate"],
         "Autor": ["creator", "author", "responsibleEntity", "nameOfCreator"],
@@ -100,7 +100,7 @@ if uploaded_file:
     for column in df.columns:
         best_match = find_best_match(column, df[column].dropna().astype(str).tolist(), atom_template.columns)
         if best_match:
-            output_df[best_match] = df[column].fillna("N/A")
+            output_df[best_match] = df[column]  # Se corrige la asignación de valores
             column_mapping[column] = best_match
     
     st.write("Mapa de columnas detectadas y ajustadas con mayor precisión usando embeddings y datos de muestra con ISDF:")
