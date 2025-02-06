@@ -49,6 +49,24 @@ def get_embedding(text):
     )
     return np.array(response.data[0].embedding)
 
+# Expansión dinámica de términos con IA
+
+def expand_column_terms(column_name, sample_values=[]):
+    """Usa IA para generar sinónimos y equivalencias de una columna detectada en el Excel."""
+    prompt = f"Genera sinónimos y términos equivalentes para '{column_name}' en el contexto de archivos y catalogación."
+    if sample_values:
+        prompt += f" Considera estos valores de muestra: {', '.join(sample_values[:5])}."
+    
+    response = client.chat.completions.create(
+        model="gpt-4-turbo",
+        messages=[
+            {"role": "system", "content": "Eres un experto en archivística y catalogación según ISDF."},
+            {"role": "user", "content": prompt}
+        ],
+        max_tokens=100
+    )
+    return response.choices[0].message.content.strip().split(", ")
+
 # Extraer información semántica de las columnas del Excel cargado
 
 def extract_column_context(df):
@@ -56,7 +74,8 @@ def extract_column_context(df):
     column_contexts = {}
     for column in df.columns:
         values_sample = df[column].dropna().astype(str).tolist()[:5]
-        column_text = f"{column} {' '.join(values_sample)}"
+        expanded_terms = expand_column_terms(column, values_sample)
+        column_text = f"{column} {' '.join(expanded_terms)} {' '.join(values_sample)}"
         column_contexts[column] = get_embedding(column_text)
     return column_contexts
 
