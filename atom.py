@@ -33,33 +33,13 @@ def extract_text_from_pdf(pdf_path):
 # Cargar contenido del documento ISDF para usar en embeddings
 ISDF_FULL_TEXT = extract_text_from_pdf(ISDF_PDF_PATH)
 
-# Expansión dinámica de términos
-
-def expand_column_terms(column_name, sample_values=[]):
-    """Usa IA para generar sinónimos y equivalencias de una columna detectada en el Excel."""
-    prompt = f"Genera sinónimos y términos equivalentes para '{column_name}' en el contexto de archivos y catalogación."
-    if sample_values:
-        prompt += f" Considera estos valores de muestra: {', '.join(sample_values[:5])}."
-    
-    response = client.chat.completions.create(
-        model="gpt-4-turbo",
-        messages=[
-            {"role": "system", "content": "Eres un experto en archivística y catalogación según ISDF."},
-            {"role": "user", "content": prompt}
-        ],
-        max_tokens=100
-    )
-    return response.choices[0].message.content.strip().split(", ")
-
-# Diccionario de términos equivalentes basado en IA
-TERM_EQUIVALENTS = {}
-
-# Diccionario de términos de baja prioridad
-LOW_PRIORITY_COLUMNS = ["archivalHistory", "relatedUnitsOfDescription", "archivistNote"]
+# Limpieza de texto
 
 def clean_text(text):
     """Normaliza el texto eliminando caracteres especiales y pasando a minúsculas."""
     return re.sub(r'[^a-zA-Z0-9 ]', '', text.lower().strip())
+
+# Obtener embeddings
 
 def get_embedding(text):
     """Obtiene el embedding de OpenAI para un texto dado."""
@@ -68,6 +48,19 @@ def get_embedding(text):
         input=text
     )
     return np.array(response.data[0].embedding)
+
+# Extraer información semántica de las columnas del Excel cargado
+
+def extract_column_context(df):
+    """Extrae información semántica de las columnas del Excel basado en nombres y valores."""
+    column_contexts = {}
+    for column in df.columns:
+        values_sample = df[column].dropna().astype(str).tolist()[:5]
+        column_text = f"{column} {' '.join(values_sample)}"
+        column_contexts[column] = get_embedding(column_text)
+    return column_contexts
+
+# Generar resumen de varias columnas fusionadas
 
 def summarize_combined_columns(values):
     """Genera un resumen de varias columnas fusionadas usando IA."""
@@ -81,25 +74,13 @@ def summarize_combined_columns(values):
     )
     return response.choices[0].message.content.strip()
 
-def find_best_match(column_name, column_values):
-    """Encuentra la mejor coincidencia usando match exacto o embeddings de OpenAI."""
-    expanded_terms = expand_column_terms(column_name, column_values)
-    possible_matches = [column_name] + expanded_terms
-    
-    # Generar embedding de los términos expandidos
-    combined_embedding = np.mean([get_embedding(term) for term in possible_matches], axis=0)
-    
-    similarity_scores = {col: cosine_similarity([combined_embedding], [emb])[0][0] for col, emb in atom_embeddings.items()}
-    
-    # Ordenar y seleccionar las 5 mejores coincidencias
+# Coincidencia de columnas basada en embeddings
+
+def find_best_match(column_name, column_embedding, reference_embeddings):
+    """Encuentra la mejor coincidencia basada en embeddings y nombres expandidos."""
+    similarity_scores = {col: cosine_similarity([column_embedding], [emb])[0][0] for col, emb in reference_embeddings.items()}
     top_matches = sorted(similarity_scores.items(), key=lambda x: x[1], reverse=True)[:5]
     st.write(f"Top 5 similitudes para {column_name}:", top_matches)
-    
-    # Evitar que archivalHistory domine la selección si hay mejores opciones
-    for match in top_matches:
-        if match[0] not in LOW_PRIORITY_COLUMNS:
-            return match[0]
-    
     return top_matches[0][0] if top_matches[0][1] > 0.80 else None
 
 # Cargar archivo Excel
@@ -110,12 +91,19 @@ if uploaded_file:
     st.write("Datos cargados del archivo:")
     st.dataframe(df)
     
+    # Cargar el template de referencia
+    atom_template = pd.read_csv("Example_information_objects_isad-2.8.csv")
+    reference_embeddings = {col: get_embedding(col) for col in atom_template.columns}
+    
+    # Extraer información semántica del Excel
+    column_contexts = extract_column_context(df)
+    
     output_df = pd.DataFrame(columns=atom_template.columns)
     combined_columns = {}
     column_mapping = {}
     
-    for column in df.columns:
-        best_match = find_best_match(column, df[column].dropna().astype(str).tolist())
+    for column, embedding in column_contexts.items():
+        best_match = find_best_match(column, embedding, reference_embeddings)
         if best_match:
             if best_match in combined_columns:
                 combined_columns[best_match].extend(df[column].dropna().astype(str).tolist())
