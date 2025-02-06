@@ -34,7 +34,6 @@ def extract_text_from_pdf(pdf_path):
 ISDF_FULL_TEXT = extract_text_from_pdf(ISDF_PDF_PATH)
 
 # Obtener embeddings
-
 def get_embedding(text):
     """Obtiene el embedding de OpenAI para un texto dado."""
     response = client.embeddings.create(
@@ -44,7 +43,6 @@ def get_embedding(text):
     return np.array(response.data[0].embedding)
 
 # Limpieza de texto con expansión de abreviaturas y palabras pegadas
-
 def expand_text_with_ai(text):
     """Expande abreviaturas, corrige errores tipográficos y separa palabras pegadas usando IA."""
     response = client.chat.completions.create(
@@ -63,35 +61,34 @@ def clean_text(text):
     return re.sub(r'[^a-zA-Z0-9 ]', '', text.lower().strip())
 
 # Clasificación automática de tipo de datos basado en valores
-
 def classify_column_type(values):
     """Determina el tipo de datos basado en los valores de la columna."""
     date_patterns = [
-        r'\d{2}/\d{2}/\d{4}',  # Formato: DD/MM/YYYY
-        r'\d{4}-\d{2}-\d{2}',  # Formato: YYYY-MM-DD
-        r'\d{2}-\d{2}-\d{4}',  # Formato: DD-MM-YYYY
+        r'\d{4}',  # Años (1874, 1902, etc.)
+        r'\d{4}-\d{2}-\d{2}',  # Formato YYYY-MM-DD
+        r'\d{2}/\d{2}/\d{4}',  # Formato DD/MM/YYYY
+        r'\d{2}-\d{2}-\d{4}',  # Formato DD-MM-YYYY
+        r's\.XVIII|s\.XVII|s\.XIX',  # Siglos (s.XVIII)
+        r'\d{4}-[a-zA-Z]+\.\d{2}',  # Fechas con meses escritos (1909-May.-29)
     ]
-    numeric_pattern = r'^[0-9]+$'
     
     if len(values) == 0:
         return "unknown"
     
     date_count = sum(any(re.match(pattern, str(v)) for pattern in date_patterns) for v in values)
-    unique_values = set(values)
-    numeric_count = sum(re.match(numeric_pattern, str(v)) is not None for v in values)
-    
     total_values = len(values)
     
     if date_count / total_values > 0.7:
         return "date"
-    elif numeric_count / total_values > 0.7 and len(unique_values) == total_values:
-        return "identifier"
     return "mixed"
 
 # Asignación basada en embeddings y similitud coseno
-
-def find_best_match(column_name, reference_columns):
+def find_best_match(column_name, column_type, reference_columns):
     """Encuentra la mejor coincidencia en el template usando embeddings y distancia coseno."""
+    if column_type == "date":
+        date_columns = [col for col in reference_columns if "date" in col.lower()]
+        return date_columns[0] if date_columns else None
+    
     column_embedding = get_embedding(column_name)
     reference_embeddings = {col: get_embedding(col) for col in reference_columns}
     
@@ -104,16 +101,16 @@ def find_best_match(column_name, reference_columns):
     return best_match
 
 # Extraer información semántica de las columnas del Excel cargado
-
 def extract_column_context(df, reference_columns):
     """Extrae información semántica de las columnas del Excel basado en nombres y valores."""
     column_contexts = {}
     for column in df.columns:
         expanded_column = clean_text(column)
         values_sample = df[column].dropna().astype(str).tolist()[:10]
+        column_type = classify_column_type(values_sample)
         
-        # Buscar mejor coincidencia usando embeddings
-        best_match = find_best_match(expanded_column, reference_columns)
+        # Buscar mejor coincidencia según tipo de dato
+        best_match = find_best_match(expanded_column, column_type, reference_columns)
         column_contexts[column] = best_match
     return column_contexts
 
