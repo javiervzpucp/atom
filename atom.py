@@ -145,12 +145,13 @@ if uploaded_file:
     
     # Obtener mapeo de columnas
     column_contexts = extract_column_context(df)
+    st.write("Mapeo de columnas:")
+    st.json(column_contexts)
     
     # Crear nuevo DataFrame con las columnas simplificadas
-    converted_df = pd.DataFrame(columns=ISAD_KEYS)
+    converted_df = pd.DataFrame()
     for original_col, mapped_col in column_contexts.items():
-        if mapped_col in ISAD_KEYS:
-            converted_df[mapped_col] = df[original_col]
+        converted_df[mapped_col] = df[original_col]
     
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
