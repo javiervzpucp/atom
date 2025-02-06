@@ -63,9 +63,12 @@ def classify_column_type(values):
     ]
     numeric_pattern = r'^[0-9]+$'
     
-    date_count = sum(any(re.match(pattern, v) for pattern in date_patterns) for v in values)
+    if len(values) == 0:
+        return "unknown"
+    
+    date_count = sum(any(re.match(pattern, str(v)) for pattern in date_patterns) for v in values)
     unique_values = set(values)
-    numeric_count = sum(re.match(numeric_pattern, v) is not None for v in values)
+    numeric_count = sum(re.match(numeric_pattern, str(v)) is not None for v in values)
     
     total_values = len(values)
     
@@ -80,13 +83,11 @@ def classify_column_type(values):
 def find_best_match(column_name, column_type, reference_columns):
     """Busca la mejor coincidencia en las columnas de referencia considerando el tipo de dato."""
     if column_type == "date":
-        for col in reference_columns:
-            if "date" in col.lower():
-                return col
+        date_columns = [col for col in reference_columns if "date" in col.lower()]
+        return date_columns[0] if date_columns else None
     elif column_type == "identifier":
-        for col in reference_columns:
-            if "identifier" in col.lower() or "record" in col.lower():
-                return col
+        identifier_columns = [col for col in reference_columns if "identifier" in col.lower() or "record" in col.lower()]
+        return identifier_columns[0] if identifier_columns else None
     return None
 
 # Extraer información semántica de las columnas del Excel cargado
@@ -96,7 +97,7 @@ def extract_column_context(df, reference_columns):
     column_contexts = {}
     for column in df.columns:
         expanded_column = clean_text(column)
-        values_sample = df[column].dropna().astype(str).tolist()[:5]
+        values_sample = df[column].dropna().astype(str).tolist()[:10]
         column_type = classify_column_type(values_sample)
         
         # Buscar mejor coincidencia según tipo de dato
