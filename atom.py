@@ -15,7 +15,7 @@ from PyPDF2 import PdfReader
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Configurar la aplicación Streamlit
-st.title("Archivador Inteligente de Documentos Antiguos")
+st.title("Excel de archivos a formato ISAD")
 
 # Inicializar cliente de OpenAI
 openai_api_key = st.secrets["OPENAI_API_KEY"]
