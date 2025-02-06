@@ -56,7 +56,7 @@ def find_best_match(column_name, column_values, atom_columns):
     for atom_field, atom_embedding in atom_embeddings.items():
         similarity = cosine_similarity([column_embedding], [atom_embedding])[0][0]
         # Penalizar términos genéricos
-        if atom_field in ["archivistNote", "languageOfDescription"]:
+        if atom_field in ["archivistNote", "languageOfDescription", "archivalHistory"]:
             similarity -= 0.10
         similarity_scores[atom_field] = similarity
     
@@ -66,10 +66,12 @@ def find_best_match(column_name, column_values, atom_columns):
     
     # Lista de términos de referencia más relevantes para ciertos campos
     preferred_terms = {
-        "Descripción": ["scriptOfDescription","scopeAndContent", "archivalHistory", "custodialHistory"],
-        "Idioma": ["languageOfMaterial"],
-        "Fecha": ["date", "creationDate", "validDate"],
-        "Autor": ["creator", "author", "responsibleEntity"]
+        "Descripción": ["scriptOfDescription","scopeAndContent", "custodialHistory", "contentAndStructure"],
+        "Idioma": ["languageOfMaterial", "languageOfResource"],
+        "Fecha": ["date", "creationDate", "validDate", "eventDate"],
+        "Autor": ["creator", "author", "responsibleEntity", "nameOfCreator"],
+        "Ubicación": ["place", "location", "geographicalArea"],
+        "Condiciones de Acceso": ["accessConditions", "rights", "restrictions"]
     }
     
     # Seleccionar mejor opción según preferencia semántica
