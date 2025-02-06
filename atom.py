@@ -89,6 +89,8 @@ def classify_column_type(column_name, values):
     # Validación por nombre de columna
     if "fecha" in column_name.lower() or "date" in column_name.lower():
         return "date"
+    if "id" in column_name.lower() or "número" in column_name.lower():
+        return "identifier"
     
     if len(values) == 0:
         return "unknown"
@@ -98,12 +100,13 @@ def classify_column_type(column_name, values):
     
     if date_count / total_values > 0.7:
         return "date"
+    
     return "mixed"
 
 # Asignación basada en embeddings y substrings
 def find_best_match(column_name, column_type):
-    """Encuentra la mejor coincidencia en ISAD_KEYS usando substrings y embeddings."""
-    relevant_keys = ISAD_KEYS
+    """Encuentra la mejor coincidencia en ISAD_KEYS usando substrings y embeddings, priorizando categorías adecuadas."""
+    relevant_keys = ISAD_KEYS if column_type not in ISAD_GROUPS else [column_type]
     
     # Coincidencia por substring
     for key in relevant_keys:
@@ -167,4 +170,3 @@ if uploaded_file:
     )
     
     st.stop()  # Detener la ejecución después de la descarga
-
