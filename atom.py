@@ -165,3 +165,6 @@ if uploaded_file:
         file_name="archivados_isad_2.8.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+    
+    st.stop()  # Detener la ejecución después de la descarga
+
