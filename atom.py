@@ -46,8 +46,7 @@ def get_embedding(text):
 ISAD_GROUPS = {
     "date": ["dateCreated", "dateIssued", "dateModified", "recordCreationDate", "eventDate"],
     "identifier": ["identifier", "recordIdentifier", "institutionIdentifier"],
-    "description": ["title", "scopeAndContent", "archivalHistory", "levelOfDescription"],
-    "relations": ["relatedUnitsOfDescription", "scriptOfDescription"],
+    "description": ["title", "scopeAndContent", "levelOfDescription", "scriptOfDescription"]
 }
 
 # Lista de columnas ISAD
@@ -100,10 +99,7 @@ def classify_column_type(column_name, values):
 # Asignación basada en embeddings y substrings
 def find_best_match(column_name, column_type):
     """Encuentra la mejor coincidencia en ISAD_GROUPS usando substrings y embeddings."""
-    if column_type in ISAD_GROUPS:
-        relevant_columns = ISAD_GROUPS[column_type]
-    else:
-        relevant_columns = ISAD_COLUMNS
+    relevant_columns = ISAD_GROUPS.get(column_type, [])
     
     # Coincidencia por substring
     for col in relevant_columns:
@@ -133,7 +129,8 @@ def extract_column_context(df):
         
         # Buscar mejor coincidencia según tipo de dato y grupo
         best_match = find_best_match(expanded_column, column_type)
-        column_contexts[column] = best_match
+        if best_match in ISAD_COLUMNS:
+            column_contexts[column] = best_match
     return column_contexts
 
 # Cargar archivo Excel
