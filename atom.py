@@ -62,20 +62,17 @@ def classify_column_type(values):
         r'\d{2}-\d{2}-\d{4}',  # Formato: DD-MM-YYYY
     ]
     numeric_pattern = r'^[0-9]+$'
-    text_pattern = r'^[a-zA-Z ]+$'
     
     date_count = sum(any(re.match(pattern, v) for pattern in date_patterns) for v in values)
+    unique_values = set(values)
     numeric_count = sum(re.match(numeric_pattern, v) is not None for v in values)
-    text_count = sum(re.match(text_pattern, v) is not None for v in values)
     
     total_values = len(values)
     
     if date_count / total_values > 0.7:
         return "date"
-    elif numeric_count / total_values > 0.7:
-        return "numeric"
-    elif text_count / total_values > 0.7:
-        return "text"
+    elif numeric_count / total_values > 0.7 and len(unique_values) == total_values:
+        return "identifier"
     return "mixed"
 
 # Obtener embeddings
@@ -88,33 +85,32 @@ def get_embedding(text):
     )
     return np.array(response.data[0].embedding)
 
-# Expansión dinámica de términos con IA
+# Mejor coincidencia con columnas del template
 
-def expand_column_terms(column_name, sample_values=[]):
-    """Usa IA para generar sinónimos y equivalencias de una columna detectada en el Excel."""
-    prompt = f"Genera sinónimos y términos equivalentes para '{column_name}' en el contexto de archivos y catalogación."
-    if sample_values:
-        prompt += f" Considera estos valores de muestra: {', '.join(sample_values[:5])}."
-    
-    response = client.chat.completions.create(
-        model="gpt-4-turbo",
-        messages=[
-            {"role": "system", "content": "Eres un experto en archivística y catalogación según ISDF."},
-            {"role": "user", "content": prompt}
-        ],
-        max_tokens=100
-    )
-    return response.choices[0].message.content.strip().split(", ")
+def find_best_date_column(reference_columns):
+    """Busca en las columnas de referencia aquellas que contengan 'date' en su nombre."""
+    for col in reference_columns:
+        if "date" in col.lower():
+            return col
+    return None
 
 # Extraer información semántica de las columnas del Excel cargado
 
-def extract_column_context(df):
+def extract_column_context(df, reference_columns):
     """Extrae información semántica de las columnas del Excel basado en nombres y valores."""
     column_contexts = {}
     for column in df.columns:
         expanded_column = clean_text(column)
         values_sample = df[column].dropna().astype(str).tolist()[:5]
         column_type = classify_column_type(values_sample)
+        
+        # Si la columna es de fecha, buscar coincidencias con columnas de referencia que contengan 'date'
+        if column_type == "date":
+            best_match = find_best_date_column(reference_columns)
+            if best_match:
+                column_contexts[column] = best_match
+                continue
+        
         expanded_terms = expand_column_terms(expanded_column, values_sample)
         column_text = f"{expanded_column} {' '.join(expanded_terms)} Tipo: {column_type} {' '.join(values_sample)}"
         column_contexts[column] = get_embedding(column_text)
@@ -127,6 +123,10 @@ if uploaded_file:
     df = pd.read_excel(uploaded_file)
     st.write("Datos cargados del archivo:")
     st.dataframe(df)
+    
+    # Obtener nombres de columnas del template ISAD 2.8
+    reference_columns = ["identifier", "dateCreated", "dateIssued", "dateModified", "recordCreationDate"]
+    column_contexts = extract_column_context(df, reference_columns)
     
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
