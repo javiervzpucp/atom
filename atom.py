@@ -69,8 +69,8 @@ def find_best_match(column_name, column_values, atom_columns):
     for atom_field, atom_embedding in atom_embeddings.items():
         similarity = cosine_similarity([column_embedding], [atom_embedding])[0][0]
         # Penalizar términos genéricos y sobreutilizados
-        if atom_field in ["archivistNote", "languageOfDescription", "archivalHistory"]:
-            similarity -= 0.30
+        if atom_field in ["archivistNote", "languageOfDescription", "archivalHistory", "scriptOfDescription", "relatedUnitsOfDescription"]:
+            similarity -= 0.40
         similarity_scores[atom_field] = similarity
     
     # Ordenar y seleccionar las 5 mejores similitudes
@@ -79,7 +79,7 @@ def find_best_match(column_name, column_values, atom_columns):
     
     # Lista de términos de referencia más relevantes para ciertos campos
     preferred_terms = {
-        "Descripción": ["scopeAndContent", "custodialHistory", "contentAndStructure", "scriptOfDescription"],
+        "Descripción": ["scopeAndContent", "custodialHistory", "contentAndStructure"],
         "Idioma": ["languageOfMaterial", "languageOfResource"],
         "Fecha": ["date", "creationDate", "validDate", "eventDate"],
         "Autor": ["creator", "author", "responsibleEntity", "nameOfCreator"],
@@ -87,11 +87,12 @@ def find_best_match(column_name, column_values, atom_columns):
         "Condiciones de Acceso": ["accessConditions", "rights", "restrictions"]
     }
     
-    # Seleccionar mejor opción según preferencia semántica
-    for term in preferred_terms.get(column_name, []):
-        for match in top_matches:
-            if match[0] == term:
-                return match[0]
+    # Seleccionar mejor opción según preferencia semántica SIEMPRE QUE EXISTA
+    if column_name in preferred_terms:
+        for term in preferred_terms[column_name]:
+            for match in top_matches:
+                if match[0] == term:
+                    return match[0]
     
     return top_matches[0][0] if top_matches[0][1] > 0.75 else None  # Se mantiene el umbral alto para precisión
 
