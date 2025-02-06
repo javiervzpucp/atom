@@ -36,12 +36,12 @@ ISDF_FULL_TEXT = extract_text_from_pdf(ISDF_PDF_PATH)
 # Limpieza de texto con expansión de abreviaturas y palabras pegadas
 
 def expand_text_with_ai(text):
-    """Expande abreviaturas y separa palabras pegadas usando IA."""
+    """Expande abreviaturas, corrige errores tipográficos y separa palabras pegadas usando IA."""
     response = client.chat.completions.create(
         model="gpt-4-turbo",
         messages=[
             {"role": "system", "content": "Eres un experto en procesamiento de texto y normalización de datos archivísticos."},
-            {"role": "user", "content": f"Expande abreviaturas y corrige palabras pegadas en este texto: {text}"}
+            {"role": "user", "content": f"Expande abreviaturas, corrige errores tipográficos y separa palabras pegadas en este texto: {text}"}
         ],
         max_tokens=100
     )
@@ -52,19 +52,31 @@ def clean_text(text):
     text = expand_text_with_ai(text)
     return re.sub(r'[^a-zA-Z0-9 ]', '', text.lower().strip())
 
-# Detectar si los valores de la columna son fechas
+# Clasificación automática de tipo de datos basado en valores
 
-def is_date_column(values):
-    """Detecta si los valores de una columna tienen un formato de fecha."""
+def classify_column_type(values):
+    """Determina el tipo de datos basado en los valores de la columna."""
     date_patterns = [
         r'\d{2}/\d{2}/\d{4}',  # Formato: DD/MM/YYYY
         r'\d{4}-\d{2}-\d{2}',  # Formato: YYYY-MM-DD
         r'\d{2}-\d{2}-\d{4}',  # Formato: DD-MM-YYYY
     ]
-    for value in values:
-        if any(re.match(pattern, value) for pattern in date_patterns):
-            return True
-    return False
+    numeric_pattern = r'^[0-9]+$'
+    text_pattern = r'^[a-zA-Z ]+$'
+    
+    date_count = sum(any(re.match(pattern, v) for pattern in date_patterns) for v in values)
+    numeric_count = sum(re.match(numeric_pattern, v) is not None for v in values)
+    text_count = sum(re.match(text_pattern, v) is not None for v in values)
+    
+    total_values = len(values)
+    
+    if date_count / total_values > 0.7:
+        return "date"
+    elif numeric_count / total_values > 0.7:
+        return "numeric"
+    elif text_count / total_values > 0.7:
+        return "text"
+    return "mixed"
 
 # Obtener embeddings
 
@@ -102,29 +114,11 @@ def extract_column_context(df):
     for column in df.columns:
         expanded_column = clean_text(column)
         values_sample = df[column].dropna().astype(str).tolist()[:5]
+        column_type = classify_column_type(values_sample)
         expanded_terms = expand_column_terms(expanded_column, values_sample)
-        column_text = f"{expanded_column} {' '.join(expanded_terms)} {' '.join(values_sample)}"
+        column_text = f"{expanded_column} {' '.join(expanded_terms)} Tipo: {column_type} {' '.join(values_sample)}"
         column_contexts[column] = get_embedding(column_text)
     return column_contexts
-
-# Coincidencia de columnas basada en embeddings
-
-def find_best_match(column_name, column_values, column_embedding, reference_embeddings):
-    """Encuentra la mejor coincidencia basada en embeddings y nombres expandidos."""
-    similarity_scores = {col: cosine_similarity([column_embedding], [emb])[0][0] for col, emb in reference_embeddings.items()}
-    top_matches = sorted(similarity_scores.items(), key=lambda x: x[1], reverse=True)[:5]
-    st.write(f"Top 5 similitudes para {column_name}:", top_matches)
-    
-    if is_date_column(column_values):
-        for match in top_matches:
-            if "date" in match[0].lower():
-                return match[0]
-    
-    for match in top_matches[:3]:
-        if match[0] != "archivalHistory":
-            return match[0]
-    
-    return top_matches[0][0] if top_matches[0][1] > 0.80 else None
 
 # Cargar archivo Excel
 uploaded_file = st.file_uploader("Sube un archivo Excel con los documentos", type=["xlsx"])
@@ -134,30 +128,9 @@ if uploaded_file:
     st.write("Datos cargados del archivo:")
     st.dataframe(df)
     
-    atom_template = pd.read_csv("Example_information_objects_isad-2.8.csv")
-    reference_embeddings = {col: get_embedding(col) for col in atom_template.columns}
-    
-    column_contexts = extract_column_context(df)
-    
-    output_df = pd.DataFrame(columns=atom_template.columns)
-    combined_columns = {}
-    column_mapping = {}
-    
-    for column, embedding in column_contexts.items():
-        best_match = find_best_match(column, df[column].dropna().astype(str).tolist(), embedding, reference_embeddings)
-        if best_match:
-            if best_match in combined_columns:
-                combined_columns[best_match].extend(df[column].dropna().astype(str).tolist())
-            else:
-                combined_columns[best_match] = df[column].dropna().astype(str).tolist()
-            column_mapping[column] = best_match
-    
-    st.write("Mapa de columnas detectadas y ajustadas:")
-    st.write(column_mapping)
-    
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        output_df.to_excel(writer, index=False, sheet_name="Datos Convertidos")
+        df.to_excel(writer, index=False, sheet_name="Datos Convertidos")
     output.seek(0)
     
     st.download_button(
