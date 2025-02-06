@@ -72,7 +72,7 @@ def clean_text(text):
 def classify_column_type(column_name, values):
     """Determina el tipo de datos basado en los valores de la columna y su nombre."""
     date_patterns = [
-        r'\d{4}',  # Años (1874, 1902, etc.)
+        r'\d{4}$',  # Años exactos (1874, 1902, etc.)
         r'\d{4}-\d{2}-\d{2}',  # Formato YYYY-MM-DD
         r'\d{2}/\d{2}/\d{4}',  # Formato DD/MM/YYYY
         r'\d{2}-\d{2}-\d{4}',  # Formato DD-MM-YYYY
@@ -80,6 +80,7 @@ def classify_column_type(column_name, values):
         r'\d{4}-[a-zA-Z]+\.\d{2}',  # Fechas con meses escritos (1909-May.-29)
     ]
     
+    # Validación por nombre de columna
     if "fecha" in column_name.lower() or "date" in column_name.lower():
         return "date"
     
