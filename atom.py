@@ -148,10 +148,11 @@ if uploaded_file:
     st.write("Mapeo de columnas:")
     st.json(column_contexts)
     
-    # Crear nuevo DataFrame con las columnas simplificadas
+    # Crear nuevo DataFrame con nombres concatenados
     converted_df = pd.DataFrame()
     for original_col, mapped_col in column_contexts.items():
-        converted_df[mapped_col] = df[original_col]
+        new_col_name = f"{original_col} ({mapped_col})"
+        converted_df[new_col_name] = df[original_col]
     
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -164,4 +165,3 @@ if uploaded_file:
         file_name="archivados_isad_2.8.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
