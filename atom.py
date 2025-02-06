@@ -42,7 +42,7 @@ def get_embedding(text):
     )
     return np.array(response.data[0].embedding)
 
-# Agrupar columnas ISAD por tema
+# Agrupar columnas ISAD en keys simplificadas
 ISAD_GROUPS = {
     "date": ["dateCreated", "dateIssued", "dateModified", "recordCreationDate", "eventDate"],
     "identifier": ["identifier", "recordIdentifier", "institutionIdentifier"],
@@ -50,8 +50,11 @@ ISAD_GROUPS = {
     "relations": ["relatedUnitsOfDescription", "scriptOfDescription"],
 }
 
-# Lista de columnas ISAD
-ISAD_COLUMNS = sum(ISAD_GROUPS.values(), [])
+# Lista de columnas simplificadas
+ISAD_KEYS = list(ISAD_GROUPS.keys())
+
+# Generar embeddings de las claves ISAD usando el contenido del documento ISDF
+ISAD_KEY_EMBEDDINGS = {key: get_embedding(f"{key}: {ISDF_FULL_TEXT}") for key in ISAD_KEYS}
 
 # Limpieza de texto con expansión de abreviaturas y palabras pegadas
 def expand_text_with_ai(text):
@@ -99,21 +102,19 @@ def classify_column_type(column_name, values):
 
 # Asignación basada en embeddings y substrings
 def find_best_match(column_name, column_type):
-    """Encuentra la mejor coincidencia en ISAD_GROUPS usando substrings y embeddings."""
-    relevant_columns = ISAD_GROUPS.get(column_type, [])
+    """Encuentra la mejor coincidencia en ISAD_KEYS usando substrings y embeddings."""
+    relevant_keys = ISAD_KEYS
     
     # Coincidencia por substring
-    for col in relevant_columns:
-        if column_type in col.lower():
-            return col
+    for key in relevant_keys:
+        if column_type in key.lower():
+            return key
     
     # Si no hay coincidencia exacta, usar embeddings
     column_embedding = get_embedding(column_name)
-    reference_embeddings = {col: get_embedding(col) for col in relevant_columns}
-    
     similarities = {
-        col: cosine_similarity([column_embedding], [emb])[0][0]
-        for col, emb in reference_embeddings.items()
+        key: cosine_similarity([column_embedding], [ISAD_KEY_EMBEDDINGS[key]])[0][0]
+        for key in relevant_keys
     }
     
     best_match = max(similarities, key=similarities.get)
@@ -130,7 +131,7 @@ def extract_column_context(df):
         
         # Buscar mejor coincidencia según tipo de dato y grupo
         best_match = find_best_match(expanded_column, column_type)
-        if best_match in ISAD_COLUMNS:
+        if best_match in ISAD_KEYS:
             column_contexts[column] = best_match
     return column_contexts
 
@@ -145,10 +146,10 @@ if uploaded_file:
     # Obtener mapeo de columnas
     column_contexts = extract_column_context(df)
     
-    # Crear nuevo DataFrame con las columnas mapeadas
-    converted_df = pd.DataFrame(columns=ISAD_COLUMNS)
+    # Crear nuevo DataFrame con las columnas simplificadas
+    converted_df = pd.DataFrame(columns=ISAD_KEYS)
     for original_col, mapped_col in column_contexts.items():
-        if mapped_col in ISAD_COLUMNS:
+        if mapped_col in ISAD_KEYS:
             converted_df[mapped_col] = df[original_col]
     
     output = BytesIO()
@@ -162,3 +163,4 @@ if uploaded_file:
         file_name="archivados_isad_2.8.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
