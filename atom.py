@@ -72,6 +72,18 @@ def generate_column_embeddings(atom_columns):
 # Precalcular embeddings de columnas de referencia
 atom_embeddings = generate_column_embeddings(atom_template.columns)
 
+def summarize_combined_columns(values):
+    """Genera un resumen de varias columnas fusionadas usando IA."""
+    response = client.chat.completions.create(
+        model="gpt-4-turbo",
+        messages=[
+            {"role": "system", "content": "Eres un experto en archivística. Resume la siguiente información manteniendo los detalles clave."},
+            {"role": "user", "content": f"Resume la siguiente información en una oración coherente: {values}"}
+        ],
+        max_tokens=150
+    )
+    return response.choices[0].message.content.strip()
+
 def find_best_match(column_name, column_values):
     """Encuentra la mejor coincidencia usando embeddings de OpenAI considerando los valores de la columna y la norma ISDF."""
     cleaned_column_name = clean_text(column_name)
@@ -99,11 +111,20 @@ if uploaded_file:
     
     # Intentar mapear automáticamente las columnas detectadas en el Excel cargado
     column_mapping = {}
+    combined_columns = {}
+    
     for column in df.columns:
         best_match = find_best_match(column, df[column].dropna().astype(str).tolist())
         if best_match:
-            output_df[best_match] = df[column]  # Se corrige la asignación de valores
+            if best_match in combined_columns:
+                combined_columns[best_match].extend(df[column].dropna().astype(str).tolist())
+            else:
+                combined_columns[best_match] = df[column].dropna().astype(str).tolist()
             column_mapping[column] = best_match
+    
+    # Generar resúmenes y llenar el DataFrame de salida
+    for col, values in combined_columns.items():
+        output_df[col] = [summarize_combined_columns(values)]
     
     st.write("Mapa de columnas detectadas y ajustadas con mayor precisión usando embeddings y datos del ISDF extraídos del PDF:")
     st.write(column_mapping)
