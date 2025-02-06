@@ -42,7 +42,7 @@ def get_embedding(text):
     )
     return np.array(response.data[0].embedding)
 
-# Agrupar columnas ISAD en keys simplificadas
+# Definir claves simplificadas para ISAD_GROUPS
 ISAD_GROUPS = {
     "date": ["dateCreated", "dateIssued", "dateModified", "recordCreationDate", "eventDate"],
     "identifier": ["identifier", "recordIdentifier", "institutionIdentifier"],
@@ -50,10 +50,10 @@ ISAD_GROUPS = {
     "relations": ["relatedUnitsOfDescription", "scriptOfDescription"],
 }
 
-# Lista de columnas simplificadas
+# Solo trabajamos con los keys simplificados
 ISAD_KEYS = list(ISAD_GROUPS.keys())
 
-# Generar embeddings de las claves ISAD usando el contenido del documento ISDF
+# Generar embeddings de las claves simplificadas ISAD usando el contenido del documento ISDF
 ISAD_KEY_EMBEDDINGS = {key: get_embedding(f"{key}: {ISDF_FULL_TEXT}") for key in ISAD_KEYS}
 
 # Limpieza de texto con expansión de abreviaturas y palabras pegadas
@@ -163,4 +163,5 @@ if uploaded_file:
         file_name="archivados_isad_2.8.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
