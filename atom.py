@@ -35,13 +35,17 @@ ISDF_FULL_TEXT = extract_text_from_pdf(ISDF_PDF_PATH)
 
 # Expansión dinámica de términos
 
-def expand_column_terms(column_name):
+def expand_column_terms(column_name, sample_values=[]):
     """Usa IA para generar sinónimos y equivalencias de una columna detectada en el Excel."""
+    prompt = f"Genera sinónimos y términos equivalentes para '{column_name}' en el contexto de archivos y catalogación."
+    if sample_values:
+        prompt += f" Considera estos valores de muestra: {', '.join(sample_values[:5])}."
+    
     response = client.chat.completions.create(
         model="gpt-4-turbo",
         messages=[
             {"role": "system", "content": "Eres un experto en archivística y catalogación según ISDF."},
-            {"role": "user", "content": f"Genera sinónimos y términos equivalentes para '{column_name}' en el contexto de archivos y catalogación."}
+            {"role": "user", "content": prompt}
         ],
         max_tokens=100
     )
@@ -94,7 +98,7 @@ atom_embeddings = generate_column_embeddings(atom_template.columns)
 
 def find_best_match(column_name, column_values):
     """Encuentra la mejor coincidencia usando match exacto o embeddings de OpenAI."""
-    expanded_terms = expand_column_terms(column_name)
+    expanded_terms = expand_column_terms(column_name, column_values)
     possible_matches = [column_name] + expanded_terms
     
     # Generar embedding de los términos expandidos
@@ -106,10 +110,9 @@ def find_best_match(column_name, column_values):
     top_matches = sorted(similarity_scores.items(), key=lambda x: x[1], reverse=True)[:5]
     st.write(f"Top 5 similitudes para {column_name}:", top_matches)
     
-    # Evitar que columnas de baja prioridad se seleccionen si hay mejores opciones
-    for match in top_matches:
-        if match[0] not in LOW_PRIORITY_COLUMNS:
-            return match[0]
+    # Si archivalHistory es la mejor coincidencia, evaluar el Top 3 antes de asignarla
+    if top_matches[0][0] == "archivalHistory" and top_matches[1][1] > 0.75:
+        return top_matches[1][0]
     
     return top_matches[0][0] if top_matches[0][1] > 0.80 else None
 
