@@ -44,10 +44,23 @@ def get_embedding(text):
     )
     return np.array(response.data[0].embedding)
 
+def tokenize_text(text):
+    """Utiliza IA para tokenizar y estructurar mejor los campos con información densa como archivalHistory."""
+    response = client.chat.completions.create(
+        model="gpt-4-turbo",
+        messages=[
+            {"role": "system", "content": "Eres un experto en archivística y catalogación según ISAD 2.8 y ISDF."},
+            {"role": "user", "content": f"Tokeniza la siguiente información en frases clave separadas por comas: {text}"}
+        ],
+        max_tokens=300
+    )
+    return response.choices[0].message.content.strip()
+
 def find_best_match(column_name, column_values, atom_columns):
     """Encuentra la mejor coincidencia usando embeddings de OpenAI considerando los valores de la columna y la norma ISDF."""
     cleaned_column_name = clean_text(column_name)
-    combined_text = cleaned_column_name + " " + " ".join(map(str, column_values[:5])) + " " + ISDF_FULL_TEXT[:2000]
+    tokenized_values = tokenize_text(" ".join(map(str, column_values[:5])))
+    combined_text = cleaned_column_name + " " + tokenized_values + " " + ISDF_FULL_TEXT[:2000]
     column_embedding = get_embedding(combined_text)
     
     atom_embeddings = {col: get_embedding(col) for col in atom_columns}  # Precalcular embeddings
@@ -57,7 +70,7 @@ def find_best_match(column_name, column_values, atom_columns):
         similarity = cosine_similarity([column_embedding], [atom_embedding])[0][0]
         # Penalizar términos genéricos y sobreutilizados
         if atom_field in ["archivistNote", "languageOfDescription", "archivalHistory"]:
-            similarity -= 0.20
+            similarity -= 0.30
         similarity_scores[atom_field] = similarity
     
     # Ordenar y seleccionar las 5 mejores similitudes
