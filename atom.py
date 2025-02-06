@@ -52,6 +52,20 @@ def clean_text(text):
     text = expand_text_with_ai(text)
     return re.sub(r'[^a-zA-Z0-9 ]', '', text.lower().strip())
 
+# Detectar si los valores de la columna son fechas
+
+def is_date_column(values):
+    """Detecta si los valores de una columna tienen un formato de fecha."""
+    date_patterns = [
+        r'\d{2}/\d{2}/\d{4}',  # Formato: DD/MM/YYYY
+        r'\d{4}-\d{2}-\d{2}',  # Formato: YYYY-MM-DD
+        r'\d{2}-\d{2}-\d{4}',  # Formato: DD-MM-YYYY
+    ]
+    for value in values:
+        if any(re.match(pattern, value) for pattern in date_patterns):
+            return True
+    return False
+
 # Obtener embeddings
 
 def get_embedding(text):
@@ -93,27 +107,18 @@ def extract_column_context(df):
         column_contexts[column] = get_embedding(column_text)
     return column_contexts
 
-# Generar resumen de varias columnas fusionadas
-
-def summarize_combined_columns(values):
-    """Genera un resumen de varias columnas fusionadas usando IA."""
-    response = client.chat.completions.create(
-        model="gpt-4-turbo",
-        messages=[
-            {"role": "system", "content": "Eres un experto en archivística. Resume la siguiente información manteniendo los detalles clave."},
-            {"role": "user", "content": f"Resume la siguiente información en una oración coherente: {values}"}
-        ],
-        max_tokens=150
-    )
-    return response.choices[0].message.content.strip()
-
 # Coincidencia de columnas basada en embeddings
 
-def find_best_match(column_name, column_embedding, reference_embeddings):
+def find_best_match(column_name, column_values, column_embedding, reference_embeddings):
     """Encuentra la mejor coincidencia basada en embeddings y nombres expandidos."""
     similarity_scores = {col: cosine_similarity([column_embedding], [emb])[0][0] for col, emb in reference_embeddings.items()}
     top_matches = sorted(similarity_scores.items(), key=lambda x: x[1], reverse=True)[:5]
     st.write(f"Top 5 similitudes para {column_name}:", top_matches)
+    
+    if is_date_column(column_values):
+        for match in top_matches:
+            if "date" in match[0].lower():
+                return match[0]
     
     for match in top_matches[:3]:
         if match[0] != "archivalHistory":
@@ -139,16 +144,13 @@ if uploaded_file:
     column_mapping = {}
     
     for column, embedding in column_contexts.items():
-        best_match = find_best_match(column, embedding, reference_embeddings)
+        best_match = find_best_match(column, df[column].dropna().astype(str).tolist(), embedding, reference_embeddings)
         if best_match:
             if best_match in combined_columns:
                 combined_columns[best_match].extend(df[column].dropna().astype(str).tolist())
             else:
                 combined_columns[best_match] = df[column].dropna().astype(str).tolist()
             column_mapping[column] = best_match
-    
-    for col, values in combined_columns.items():
-        output_df[col] = [summarize_combined_columns(values)]
     
     st.write("Mapa de columnas detectadas y ajustadas:")
     st.write(column_mapping)
