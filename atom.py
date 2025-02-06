@@ -33,7 +33,7 @@ def extract_text_from_pdf(pdf_path):
 # Cargar contenido del documento ISDF para usar en embeddings
 ISDF_FULL_TEXT = extract_text_from_pdf(ISDF_PDF_PATH)
 
-# Obtener embeddings
+# Obtener embeddings de los keys de ISAD_GROUPS
 def get_embedding(text):
     """Obtiene el embedding de OpenAI para un texto dado."""
     response = client.embeddings.create(
@@ -54,7 +54,7 @@ ISAD_GROUPS = {
 ISAD_KEYS = list(ISAD_GROUPS.keys())
 
 # Generar embeddings de las claves simplificadas ISAD usando el contenido del documento ISDF
-ISAD_KEY_EMBEDDINGS = {key: get_embedding(f"{key}: {ISDF_FULL_TEXT}") for key in ISAD_KEYS}
+ISAD_KEY_EMBEDDINGS = {key: get_embedding(key) for key in ISAD_KEYS}
 
 # Limpieza de texto con expansión de abreviaturas y palabras pegadas
 def expand_text_with_ai(text):
@@ -163,5 +163,4 @@ if uploaded_file:
         file_name="archivados_isad_2.8.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
 
