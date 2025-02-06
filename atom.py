@@ -33,17 +33,24 @@ def extract_text_from_pdf(pdf_path):
 # Cargar contenido del documento ISDF para usar en embeddings
 ISDF_FULL_TEXT = extract_text_from_pdf(ISDF_PDF_PATH)
 
-# Diccionario de términos equivalentes basado en el PDF
-TERM_EQUIVALENTS = {
-    "Fecha": ["date", "creationDate", "validDate", "eventDate"],
-    "Autor": ["creator", "author", "responsibleEntity", "nameOfCreator"],
-    "Descripción": ["scopeAndContent", "custodialHistory", "contentAndStructure"],
-    "Idioma": ["languageOfMaterial", "languageOfResource"],
-    "Ubicación": ["place", "location", "geographicalArea"],
-    "Acceso": ["accessConditions", "rights", "restrictions"]
-}
+# Expansión dinámica de términos
 
-# Definir columnas que solo deben ser seleccionadas si son la mejor opción absoluta
+def expand_column_terms(column_name):
+    """Usa IA para generar sinónimos y equivalencias de una columna detectada en el Excel."""
+    response = client.chat.completions.create(
+        model="gpt-4-turbo",
+        messages=[
+            {"role": "system", "content": "Eres un experto en archivística y catalogación según ISDF."},
+            {"role": "user", "content": f"Genera sinónimos y términos equivalentes para '{column_name}' en el contexto de archivos y catalogación."}
+        ],
+        max_tokens=100
+    )
+    return response.choices[0].message.content.strip().split(", ")
+
+# Diccionario de términos equivalentes basado en IA
+TERM_EQUIVALENTS = {}
+
+# Diccionario de términos de baja prioridad
 LOW_PRIORITY_COLUMNS = ["archivalHistory", "relatedUnitsOfDescription", "archivistNote"]
 
 def clean_text(text):
@@ -86,7 +93,9 @@ def generate_column_embeddings(atom_columns):
 atom_embeddings = generate_column_embeddings(atom_template.columns)
 
 def match_exact_or_approximate(column_name):
-    """Intenta encontrar una coincidencia exacta o aproximada utilizando los términos equivalentes."""
+    """Intenta encontrar una coincidencia exacta o aproximada utilizando términos expandidos."""
+    if column_name not in TERM_EQUIVALENTS:
+        TERM_EQUIVALENTS[column_name] = expand_column_terms(column_name)
     for key, values in TERM_EQUIVALENTS.items():
         if any(clean_text(column_name) == clean_text(value) for value in values):
             return key
@@ -155,7 +164,7 @@ if uploaded_file:
     for col, values in combined_columns.items():
         output_df[col] = [summarize_combined_columns(values)]
     
-    st.write("Mapa de columnas detectadas y ajustadas con mayor precisión usando embeddings y datos del ISDF extraídos del PDF:")
+    st.write("Mapa de columnas detectadas y ajustadas con mayor precisión usando embeddings y términos expandidos:")
     st.write(column_mapping)
     
     # Convertir a Excel para descarga
