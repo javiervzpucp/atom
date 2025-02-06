@@ -33,10 +33,23 @@ def extract_text_from_pdf(pdf_path):
 # Cargar contenido del documento ISDF para usar en embeddings
 ISDF_FULL_TEXT = extract_text_from_pdf(ISDF_PDF_PATH)
 
-# Limpieza de texto
+# Limpieza de texto con expansión de abreviaturas y palabras pegadas
+
+def expand_text_with_ai(text):
+    """Expande abreviaturas y separa palabras pegadas usando IA."""
+    response = client.chat.completions.create(
+        model="gpt-4-turbo",
+        messages=[
+            {"role": "system", "content": "Eres un experto en procesamiento de texto y normalización de datos archivísticos."},
+            {"role": "user", "content": f"Expande abreviaturas y corrige palabras pegadas en este texto: {text}"}
+        ],
+        max_tokens=100
+    )
+    return response.choices[0].message.content.strip()
 
 def clean_text(text):
-    """Normaliza el texto eliminando caracteres especiales y pasando a minúsculas."""
+    """Normaliza el texto eliminando caracteres especiales y pasando a minúsculas, expandiendo abreviaturas."""
+    text = expand_text_with_ai(text)
     return re.sub(r'[^a-zA-Z0-9 ]', '', text.lower().strip())
 
 # Obtener embeddings
@@ -73,9 +86,10 @@ def extract_column_context(df):
     """Extrae información semántica de las columnas del Excel basado en nombres y valores."""
     column_contexts = {}
     for column in df.columns:
+        expanded_column = clean_text(column)
         values_sample = df[column].dropna().astype(str).tolist()[:5]
-        expanded_terms = expand_column_terms(column, values_sample)
-        column_text = f"{column} {' '.join(expanded_terms)} {' '.join(values_sample)}"
+        expanded_terms = expand_column_terms(expanded_column, values_sample)
+        column_text = f"{expanded_column} {' '.join(expanded_terms)} {' '.join(values_sample)}"
         column_contexts[column] = get_embedding(column_text)
     return column_contexts
 
@@ -100,6 +114,11 @@ def find_best_match(column_name, column_embedding, reference_embeddings):
     similarity_scores = {col: cosine_similarity([column_embedding], [emb])[0][0] for col, emb in reference_embeddings.items()}
     top_matches = sorted(similarity_scores.items(), key=lambda x: x[1], reverse=True)[:5]
     st.write(f"Top 5 similitudes para {column_name}:", top_matches)
+    
+    for match in top_matches[:3]:
+        if match[0] != "archivalHistory":
+            return match[0]
+    
     return top_matches[0][0] if top_matches[0][1] > 0.80 else None
 
 # Cargar archivo Excel
@@ -110,11 +129,9 @@ if uploaded_file:
     st.write("Datos cargados del archivo:")
     st.dataframe(df)
     
-    # Cargar el template de referencia
     atom_template = pd.read_csv("Example_information_objects_isad-2.8.csv")
     reference_embeddings = {col: get_embedding(col) for col in atom_template.columns}
     
-    # Extraer información semántica del Excel
     column_contexts = extract_column_context(df)
     
     output_df = pd.DataFrame(columns=atom_template.columns)
@@ -130,7 +147,6 @@ if uploaded_file:
                 combined_columns[best_match] = df[column].dropna().astype(str).tolist()
             column_mapping[column] = best_match
     
-    # Generar resúmenes y llenar el DataFrame de salida
     for col, values in combined_columns.items():
         output_df[col] = [summarize_combined_columns(values)]
     
