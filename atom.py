@@ -52,6 +52,23 @@ def clean_text(text):
     text = expand_text_with_ai(text)
     return re.sub(r'[^a-zA-Z0-9 ]', '', text.lower().strip())
 
+# Generación de términos equivalentes con IA
+def expand_column_terms(column_name, sample_values=[]):
+    """Usa IA para generar sinónimos y equivalencias de una columna detectada en el Excel."""
+    prompt = f"Genera sinónimos y términos equivalentes para '{column_name}' en el contexto de archivos y catalogación."
+    if sample_values:
+        prompt += f" Considera estos valores de muestra: {', '.join(sample_values[:5])}."
+    
+    response = client.chat.completions.create(
+        model="gpt-4-turbo",
+        messages=[
+            {"role": "system", "content": "Eres un experto en archivística y catalogación según ISDF."},
+            {"role": "user", "content": prompt}
+        ],
+        max_tokens=100
+    )
+    return response.choices[0].message.content.strip().split(", ")
+
 # Clasificación automática de tipo de datos basado en valores
 
 def classify_column_type(values):
@@ -129,7 +146,14 @@ if uploaded_file:
     st.dataframe(df)
     
     # Obtener nombres de columnas del template ISAD 2.8
-    reference_columns = ["identifier", "dateCreated", "dateIssued", "dateModified", "recordCreationDate"]
+    reference_columns = [
+        "identifier", "dateCreated", "dateIssued", "dateModified", "recordCreationDate",
+        "title", "creator", "scopeAndContent", "extentAndMedium", "language", "levelOfDescription",
+        "repository", "accessConditions", "reproductionConditions", "archivalHistory",
+        "acquisitionSource", "acquisitionDate", "relatedUnitsOfDescription",
+        "publicationNote", "archivistNote", "rulesOrConventions", "rights",
+        "digitalObjectIdentifier", "locationOfOriginals", "locationOfCopies"
+    ]
     column_contexts = extract_column_context(df, reference_columns)
     
     output = BytesIO()
