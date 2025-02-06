@@ -50,6 +50,9 @@ ISAD_GROUPS = {
     "relations": ["relatedUnitsOfDescription", "scriptOfDescription"],
 }
 
+# Lista de columnas ISAD
+ISAD_COLUMNS = sum(ISAD_GROUPS.values(), [])
+
 # Limpieza de texto con expansión de abreviaturas y palabras pegadas
 def expand_text_with_ai(text):
     """Expande abreviaturas, corrige errores tipográficos y separa palabras pegadas usando IA."""
@@ -94,14 +97,20 @@ def classify_column_type(column_name, values):
         return "date"
     return "mixed"
 
-# Asignación basada en embeddings y similitud coseno
+# Asignación basada en embeddings y substrings
 def find_best_match(column_name, column_type):
-    """Encuentra la mejor coincidencia en el template usando embeddings y distancia coseno, dentro del grupo adecuado."""
+    """Encuentra la mejor coincidencia en ISAD_GROUPS usando substrings y embeddings."""
     if column_type in ISAD_GROUPS:
         relevant_columns = ISAD_GROUPS[column_type]
     else:
-        relevant_columns = sum(ISAD_GROUPS.values(), [])  # Todas las columnas
+        relevant_columns = ISAD_COLUMNS
     
+    # Coincidencia por substring
+    for col in relevant_columns:
+        if column_type in col.lower():
+            return col
+    
+    # Si no hay coincidencia exacta, usar embeddings
     column_embedding = get_embedding(column_name)
     reference_embeddings = {col: get_embedding(col) for col in relevant_columns}
     
@@ -139,9 +148,10 @@ if uploaded_file:
     column_contexts = extract_column_context(df)
     
     # Crear nuevo DataFrame con las columnas mapeadas
-    converted_df = pd.DataFrame()
+    converted_df = pd.DataFrame(columns=ISAD_COLUMNS)
     for original_col, mapped_col in column_contexts.items():
-        converted_df[mapped_col] = df[original_col]
+        if mapped_col in ISAD_COLUMNS:
+            converted_df[mapped_col] = df[original_col]
     
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
