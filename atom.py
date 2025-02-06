@@ -92,38 +92,15 @@ def generate_column_embeddings(atom_columns):
 # Precalcular embeddings de columnas de referencia
 atom_embeddings = generate_column_embeddings(atom_template.columns)
 
-def match_exact_or_approximate(column_name):
-    """Intenta encontrar una coincidencia exacta o aproximada utilizando términos expandidos."""
-    if column_name not in TERM_EQUIVALENTS:
-        TERM_EQUIVALENTS[column_name] = expand_column_terms(column_name)
-    for key, values in TERM_EQUIVALENTS.items():
-        if any(clean_text(column_name) == clean_text(value) for value in values):
-            return key
-    return None
-
-def summarize_combined_columns(values):
-    """Genera un resumen de varias columnas fusionadas usando IA."""
-    response = client.chat.completions.create(
-        model="gpt-4-turbo",
-        messages=[
-            {"role": "system", "content": "Eres un experto en archivística. Resume la siguiente información manteniendo los detalles clave."},
-            {"role": "user", "content": f"Resume la siguiente información en una oración coherente: {values}"}
-        ],
-        max_tokens=150
-    )
-    return response.choices[0].message.content.strip()
-
 def find_best_match(column_name, column_values):
     """Encuentra la mejor coincidencia usando match exacto o embeddings de OpenAI."""
-    exact_match = match_exact_or_approximate(column_name)
-    if exact_match:
-        return exact_match
+    expanded_terms = expand_column_terms(column_name)
+    possible_matches = [column_name] + expanded_terms
     
-    cleaned_column_name = clean_text(column_name)
-    combined_text = cleaned_column_name + " " + column_definitions.get(column_name, '')
-    column_embedding = get_embedding(combined_text)
+    # Generar embedding de los términos expandidos
+    combined_embedding = np.mean([get_embedding(term) for term in possible_matches], axis=0)
     
-    similarity_scores = {col: cosine_similarity([column_embedding], [emb])[0][0] for col, emb in atom_embeddings.items()}
+    similarity_scores = {col: cosine_similarity([combined_embedding], [emb])[0][0] for col, emb in atom_embeddings.items()}
     
     # Ordenar y seleccionar las 5 mejores coincidencias
     top_matches = sorted(similarity_scores.items(), key=lambda x: x[1], reverse=True)[:5]
@@ -140,34 +117,22 @@ def find_best_match(column_name, column_values):
 uploaded_file = st.file_uploader("Sube un archivo Excel con los documentos", type=["xlsx"])
 
 if uploaded_file:
-    # Leer el archivo Excel
     df = pd.read_excel(uploaded_file)
     st.write("Datos cargados del archivo:")
     st.dataframe(df)
     
     output_df = pd.DataFrame(columns=atom_template.columns)
     
-    # Intentar mapear automáticamente las columnas detectadas en el Excel cargado
     column_mapping = {}
-    combined_columns = {}
-    
     for column in df.columns:
         best_match = find_best_match(column, df[column].dropna().astype(str).tolist())
         if best_match:
-            if best_match in combined_columns:
-                combined_columns[best_match].extend(df[column].dropna().astype(str).tolist())
-            else:
-                combined_columns[best_match] = df[column].dropna().astype(str).tolist()
+            output_df[best_match] = df[column]
             column_mapping[column] = best_match
     
-    # Generar resúmenes y llenar el DataFrame de salida
-    for col, values in combined_columns.items():
-        output_df[col] = [summarize_combined_columns(values)]
-    
-    st.write("Mapa de columnas detectadas y ajustadas con mayor precisión usando embeddings y términos expandidos:")
+    st.write("Mapa de columnas detectadas:")
     st.write(column_mapping)
     
-    # Convertir a Excel para descarga
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         output_df.to_excel(writer, index=False, sheet_name="Datos Convertidos")
