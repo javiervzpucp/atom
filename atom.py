@@ -42,6 +42,14 @@ def get_embedding(text):
     )
     return np.array(response.data[0].embedding)
 
+# Agrupar columnas ISAD por tema
+ISAD_GROUPS = {
+    "date": ["dateCreated", "dateIssued", "dateModified", "recordCreationDate", "eventDate"],
+    "identifier": ["identifier", "recordIdentifier", "institutionIdentifier"],
+    "description": ["title", "scopeAndContent", "archivalHistory", "levelOfDescription"],
+    "relations": ["relatedUnitsOfDescription", "scriptOfDescription"],
+}
+
 # Limpieza de texto con expansión de abreviaturas y palabras pegadas
 def expand_text_with_ai(text):
     """Expande abreviaturas, corrige errores tipográficos y separa palabras pegadas usando IA."""
@@ -83,14 +91,15 @@ def classify_column_type(values):
     return "mixed"
 
 # Asignación basada en embeddings y similitud coseno
-def find_best_match(column_name, column_type, reference_columns):
-    """Encuentra la mejor coincidencia en el template usando embeddings y distancia coseno."""
-    if column_type == "date":
-        date_columns = [col for col in reference_columns if "date" in col.lower()]
-        return date_columns[0] if date_columns else None
+def find_best_match(column_name, column_type):
+    """Encuentra la mejor coincidencia en el template usando embeddings y distancia coseno, dentro del grupo adecuado."""
+    if column_type in ISAD_GROUPS:
+        relevant_columns = ISAD_GROUPS[column_type]
+    else:
+        relevant_columns = sum(ISAD_GROUPS.values(), [])  # Todas las columnas
     
     column_embedding = get_embedding(column_name)
-    reference_embeddings = {col: get_embedding(col) for col in reference_columns}
+    reference_embeddings = {col: get_embedding(col) for col in relevant_columns}
     
     similarities = {
         col: cosine_similarity([column_embedding], [emb])[0][0]
@@ -101,7 +110,7 @@ def find_best_match(column_name, column_type, reference_columns):
     return best_match
 
 # Extraer información semántica de las columnas del Excel cargado
-def extract_column_context(df, reference_columns):
+def extract_column_context(df):
     """Extrae información semántica de las columnas del Excel basado en nombres y valores."""
     column_contexts = {}
     for column in df.columns:
@@ -109,8 +118,8 @@ def extract_column_context(df, reference_columns):
         values_sample = df[column].dropna().astype(str).tolist()[:10]
         column_type = classify_column_type(values_sample)
         
-        # Buscar mejor coincidencia según tipo de dato
-        best_match = find_best_match(expanded_column, column_type, reference_columns)
+        # Buscar mejor coincidencia según tipo de dato y grupo
+        best_match = find_best_match(expanded_column, column_type)
         column_contexts[column] = best_match
     return column_contexts
 
@@ -122,9 +131,8 @@ if uploaded_file:
     st.write("Datos cargados del archivo:")
     st.dataframe(df)
     
-    # Obtener nombres de columnas del template ISAD 2.8
-    reference_columns = ["identifier", "dateCreated", "dateIssued", "dateModified", "recordCreationDate", "eventDate"]
-    column_contexts = extract_column_context(df, reference_columns)
+    # Obtener mapeo de columnas
+    column_contexts = extract_column_context(df)
     
     # Crear nuevo DataFrame con las columnas mapeadas
     converted_df = pd.DataFrame()
