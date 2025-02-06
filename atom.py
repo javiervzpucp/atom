@@ -146,7 +146,7 @@ if uploaded_file:
     st.dataframe(df)
     
     # Obtener nombres de columnas del template ISAD 2.8
-    reference_columns = ["identifier", "dateCreated", "dateIssued", "dateModified", "recordCreationDate"]
+    reference_columns = ["identifier", "dateCreated", "dateIssued", "dateModified", "recordCreationDate", "eventDate"]
     column_contexts = extract_column_context(df, reference_columns)
     
     output = BytesIO()
