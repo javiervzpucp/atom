@@ -46,7 +46,8 @@ def get_embedding(text):
 ISAD_GROUPS = {
     "date": ["dateCreated", "dateIssued", "dateModified", "recordCreationDate", "eventDate"],
     "identifier": ["identifier", "recordIdentifier", "institutionIdentifier"],
-    "description": ["title", "scopeAndContent", "levelOfDescription", "scriptOfDescription"]
+    "description": ["title", "scopeAndContent", "archivalHistory", "levelOfDescription"],
+    "relations": ["relatedUnitsOfDescription", "scriptOfDescription"],
 }
 
 # Lista de columnas ISAD
