@@ -33,6 +33,16 @@ def extract_text_from_pdf(pdf_path):
 # Cargar contenido del documento ISDF para usar en embeddings
 ISDF_FULL_TEXT = extract_text_from_pdf(ISDF_PDF_PATH)
 
+# Diccionario de términos equivalentes basado en el PDF
+TERM_EQUIVALENTS = {
+    "Fecha": ["date", "creationDate", "validDate", "eventDate"],
+    "Autor": ["creator", "author", "responsibleEntity", "nameOfCreator"],
+    "Descripción": ["scopeAndContent", "custodialHistory", "contentAndStructure"],
+    "Idioma": ["languageOfMaterial", "languageOfResource"],
+    "Ubicación": ["place", "location", "geographicalArea"],
+    "Acceso": ["accessConditions", "rights", "restrictions"]
+}
+
 def clean_text(text):
     """Normaliza el texto eliminando caracteres especiales y pasando a minúsculas."""
     return re.sub(r'[^a-zA-Z0-9 ]', '', text.lower().strip())
@@ -72,6 +82,13 @@ def generate_column_embeddings(atom_columns):
 # Precalcular embeddings de columnas de referencia
 atom_embeddings = generate_column_embeddings(atom_template.columns)
 
+def match_exact_or_approximate(column_name):
+    """Intenta encontrar una coincidencia exacta o aproximada utilizando los términos equivalentes."""
+    for key, values in TERM_EQUIVALENTS.items():
+        if any(clean_text(column_name) == clean_text(value) for value in values):
+            return key
+    return None
+
 def summarize_combined_columns(values):
     """Genera un resumen de varias columnas fusionadas usando IA."""
     response = client.chat.completions.create(
@@ -85,7 +102,11 @@ def summarize_combined_columns(values):
     return response.choices[0].message.content.strip()
 
 def find_best_match(column_name, column_values):
-    """Encuentra la mejor coincidencia usando embeddings de OpenAI considerando los valores de la columna y la norma ISDF."""
+    """Encuentra la mejor coincidencia usando match exacto o embeddings de OpenAI."""
+    exact_match = match_exact_or_approximate(column_name)
+    if exact_match:
+        return exact_match
+    
     cleaned_column_name = clean_text(column_name)
     combined_text = cleaned_column_name + " " + column_definitions.get(column_name, '')
     column_embedding = get_embedding(combined_text)
