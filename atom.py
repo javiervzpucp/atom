@@ -87,11 +87,16 @@ def get_embedding(text):
 
 # Mejor coincidencia con columnas del template
 
-def find_best_date_column(reference_columns):
-    """Busca en las columnas de referencia aquellas que contengan 'date' en su nombre."""
-    for col in reference_columns:
-        if "date" in col.lower():
-            return col
+def find_best_match(column_name, column_type, reference_columns):
+    """Busca la mejor coincidencia en las columnas de referencia considerando el tipo de dato."""
+    if column_type == "date":
+        for col in reference_columns:
+            if "date" in col.lower():
+                return col
+    elif column_type == "identifier":
+        for col in reference_columns:
+            if "identifier" in col.lower() or "record" in col.lower():
+                return col
     return None
 
 # Extraer información semántica de las columnas del Excel cargado
@@ -104,12 +109,11 @@ def extract_column_context(df, reference_columns):
         values_sample = df[column].dropna().astype(str).tolist()[:5]
         column_type = classify_column_type(values_sample)
         
-        # Si la columna es de fecha, buscar coincidencias con columnas de referencia que contengan 'date'
-        if column_type == "date":
-            best_match = find_best_date_column(reference_columns)
-            if best_match:
-                column_contexts[column] = best_match
-                continue
+        # Buscar mejor coincidencia según tipo de dato
+        best_match = find_best_match(expanded_column, column_type, reference_columns)
+        if best_match:
+            column_contexts[column] = best_match
+            continue
         
         expanded_terms = expand_column_terms(expanded_column, values_sample)
         column_text = f"{expanded_column} {' '.join(expanded_terms)} Tipo: {column_type} {' '.join(values_sample)}"
