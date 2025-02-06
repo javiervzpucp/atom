@@ -52,23 +52,6 @@ def clean_text(text):
     text = expand_text_with_ai(text)
     return re.sub(r'[^a-zA-Z0-9 ]', '', text.lower().strip())
 
-# Generación de términos equivalentes con IA
-def expand_column_terms(column_name, sample_values=[]):
-    """Usa IA para generar sinónimos y equivalencias de una columna detectada en el Excel."""
-    prompt = f"Genera sinónimos y términos equivalentes para '{column_name}' en el contexto de archivos y catalogación."
-    if sample_values:
-        prompt += f" Considera estos valores de muestra: {', '.join(sample_values[:5])}."
-    
-    response = client.chat.completions.create(
-        model="gpt-4-turbo",
-        messages=[
-            {"role": "system", "content": "Eres un experto en archivística y catalogación según ISDF."},
-            {"role": "user", "content": prompt}
-        ],
-        max_tokens=100
-    )
-    return response.choices[0].message.content.strip().split(", ")
-
 # Clasificación automática de tipo de datos basado en valores
 
 def classify_column_type(values):
@@ -91,16 +74,6 @@ def classify_column_type(values):
     elif numeric_count / total_values > 0.7 and len(unique_values) == total_values:
         return "identifier"
     return "mixed"
-
-# Obtener embeddings
-
-def get_embedding(text):
-    """Obtiene el embedding de OpenAI para un texto dado."""
-    response = client.embeddings.create(
-        model="text-embedding-ada-002",
-        input=text
-    )
-    return np.array(response.data[0].embedding)
 
 # Mejor coincidencia con columnas del template
 
@@ -132,9 +105,8 @@ def extract_column_context(df, reference_columns):
             column_contexts[column] = best_match
             continue
         
-        expanded_terms = expand_column_terms(expanded_column, values_sample)
-        column_text = f"{expanded_column} {' '.join(expanded_terms)} Tipo: {column_type} {' '.join(values_sample)}"
-        column_contexts[column] = get_embedding(column_text)
+        column_text = f"{expanded_column} Tipo: {column_type} {' '.join(values_sample)}"
+        column_contexts[column] = column_text
     return column_contexts
 
 # Cargar archivo Excel
@@ -149,9 +121,14 @@ if uploaded_file:
     reference_columns = ["identifier", "dateCreated", "dateIssued", "dateModified", "recordCreationDate", "eventDate"]
     column_contexts = extract_column_context(df, reference_columns)
     
+    # Crear nuevo DataFrame con las columnas mapeadas
+    converted_df = pd.DataFrame()
+    for original_col, mapped_col in column_contexts.items():
+        converted_df[mapped_col] = df[original_col]
+    
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name="Datos Convertidos")
+        converted_df.to_excel(writer, index=False, sheet_name="Datos Convertidos")
     output.seek(0)
     
     st.download_button(
