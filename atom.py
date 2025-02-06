@@ -69,32 +69,17 @@ def get_embedding(text):
     )
     return np.array(response.data[0].embedding)
 
-def extract_column_definitions(pdf_text, column_names):
-    """Extrae definiciones de las columnas desde el texto del PDF usando IA."""
-    column_definitions = {}
-    for col in column_names:
-        response = client.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=[
-                {"role": "system", "content": "Eres un experto en archivística y catalogación según ISDF."},
-                {"role": "user", "content": f"Extrae la definición más relevante del término '{col}' según el siguiente documento:\n{pdf_text}"}
-            ],
-            max_tokens=200
-        )
-        column_definitions[col] = response.choices[0].message.content.strip()
-    return column_definitions
-
-# Extraer definiciones específicas de columnas desde el PDF
-atom_template = pd.read_csv("Example_information_objects_isad-2.8.csv")
-column_definitions = extract_column_definitions(ISDF_FULL_TEXT, atom_template.columns)
-
-def generate_column_embeddings(atom_columns):
-    """Genera embeddings de las columnas usando sus definiciones extraídas del ISDF."""
-    enriched_texts = {col: f"{col} - {column_definitions.get(col, '')}" for col in atom_columns}
-    return {col: get_embedding(text) for col, text in enriched_texts.items()}
-
-# Precalcular embeddings de columnas de referencia
-atom_embeddings = generate_column_embeddings(atom_template.columns)
+def summarize_combined_columns(values):
+    """Genera un resumen de varias columnas fusionadas usando IA."""
+    response = client.chat.completions.create(
+        model="gpt-4-turbo",
+        messages=[
+            {"role": "system", "content": "Eres un experto en archivística. Resume la siguiente información manteniendo los detalles clave."},
+            {"role": "user", "content": f"Resume la siguiente información en una oración coherente: {values}"}
+        ],
+        max_tokens=150
+    )
+    return response.choices[0].message.content.strip()
 
 def find_best_match(column_name, column_values):
     """Encuentra la mejor coincidencia usando match exacto o embeddings de OpenAI."""
@@ -110,9 +95,10 @@ def find_best_match(column_name, column_values):
     top_matches = sorted(similarity_scores.items(), key=lambda x: x[1], reverse=True)[:5]
     st.write(f"Top 5 similitudes para {column_name}:", top_matches)
     
-    # Si archivalHistory es la mejor coincidencia, evaluar el Top 3 antes de asignarla
-    if top_matches[0][0] == "archivalHistory" and top_matches[1][1] > 0.75:
-        return top_matches[1][0]
+    # Evitar que archivalHistory domine la selección si hay mejores opciones
+    for match in top_matches:
+        if match[0] not in LOW_PRIORITY_COLUMNS:
+            return match[0]
     
     return top_matches[0][0] if top_matches[0][1] > 0.80 else None
 
@@ -125,15 +111,23 @@ if uploaded_file:
     st.dataframe(df)
     
     output_df = pd.DataFrame(columns=atom_template.columns)
-    
+    combined_columns = {}
     column_mapping = {}
+    
     for column in df.columns:
         best_match = find_best_match(column, df[column].dropna().astype(str).tolist())
         if best_match:
-            output_df[best_match] = df[column]
+            if best_match in combined_columns:
+                combined_columns[best_match].extend(df[column].dropna().astype(str).tolist())
+            else:
+                combined_columns[best_match] = df[column].dropna().astype(str).tolist()
             column_mapping[column] = best_match
     
-    st.write("Mapa de columnas detectadas:")
+    # Generar resúmenes y llenar el DataFrame de salida
+    for col, values in combined_columns.items():
+        output_df[col] = [summarize_combined_columns(values)]
+    
+    st.write("Mapa de columnas detectadas y ajustadas:")
     st.write(column_mapping)
     
     output = BytesIO()
